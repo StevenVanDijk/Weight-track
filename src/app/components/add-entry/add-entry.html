@@ -1,0 +1,94 @@
+<div class="add-entry fade-in">
+  <div class="page-header">
+    <h2>Log Weight</h2>
+    <p class="subtitle">Record today's measurement</p>
+  </div>
+
+  @if (saved()) {
+    <div class="success-toast">
+      <span class="material-icons">check_circle</span>
+      Entry saved successfully!
+    </div>
+  }
+
+  <form class="entry-form" (ngSubmit)="submit()" #f="ngForm">
+    <!-- Weight Input -->
+    <div class="weight-input-group">
+      <label>Weight</label>
+      <div class="weight-row">
+        <input
+          type="number"
+          [(ngModel)]="weightInput"
+          name="weight"
+          step="0.1"
+          min="1"
+          max="500"
+          placeholder="0.0"
+          class="weight-field"
+          autofocus
+          required
+        />
+        <div class="unit-toggle">
+          <button
+            type="button"
+            [class.active]="unitInput === 'kg'"
+            (click)="unitInput = 'kg'"
+          >kg</button>
+          <button
+            type="button"
+            [class.active]="unitInput === 'lbs'"
+            (click)="unitInput = 'lbs'"
+          >lbs</button>
+        </div>
+      </div>
+      @if (error()) {
+        <span class="error-msg">{{ error() }}</span>
+      }
+    </div>
+
+    <!-- Date -->
+    <div class="form-group">
+      <label for="date">Date</label>
+      <input
+        id="date"
+        type="date"
+        [(ngModel)]="dateInput"
+        name="date"
+        [max]="date()"
+        required
+      />
+    </div>
+
+    <!-- Goal Weight -->
+    <div class="form-group">
+      <label for="goal">Goal Weight (optional)</label>
+      <input
+        id="goal"
+        type="number"
+        [(ngModel)]="goalWeightInput"
+        name="goal"
+        step="0.1"
+        min="1"
+        max="500"
+        [placeholder]="'e.g. 70 ' + unitInput"
+      />
+    </div>
+
+    <!-- Note -->
+    <div class="form-group">
+      <label for="note">Note (optional)</label>
+      <textarea
+        id="note"
+        [(ngModel)]="noteInput"
+        name="note"
+        placeholder="How are you feeling today?"
+        rows="2"
+      ></textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-full submit-btn">
+      <span class="material-icons">save</span>
+      Save Entry
+    </button>
+  </form>
+</div>

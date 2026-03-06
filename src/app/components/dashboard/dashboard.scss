@@ -1,0 +1,238 @@
+.dashboard {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: border-color 0.2s;
+
+  &.primary { border-color: rgba(129, 140, 248, 0.4); }
+  &.success { border-color: rgba(16, 185, 129, 0.4); }
+  &.danger { border-color: rgba(239, 68, 68, 0.4); }
+
+  .stat-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(79, 70, 229, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    .material-icons { color: var(--primary-light); font-size: 20px; }
+  }
+
+  &.success .stat-icon { background: rgba(16, 185, 129, 0.15); .material-icons { color: var(--success); } }
+  &.danger .stat-icon { background: rgba(239, 68, 68, 0.15); .material-icons { color: var(--danger); } }
+}
+
+.stat-body {
+  min-width: 0;
+}
+
+.stat-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.stat-unit {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.stat-empty {
+  color: var(--text-muted);
+}
+
+.stat-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+// Goal Section
+.goal-section {
+  .goal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+
+  .goal-percent {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-light);
+  }
+
+  .goal-meta {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+}
+
+.progress-bar {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--primary-light));
+    border-radius: 4px;
+    transition: width 0.5s ease;
+  }
+}
+
+// Quick Actions
+.quick-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  border-radius: var(--radius);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  transition: all 0.2s;
+
+  &:hover { background: var(--bg-card-hover); }
+  &:active { transform: scale(0.97); }
+
+  &.primary-action {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    border-color: transparent;
+    color: white;
+
+    &:hover { opacity: 0.9; }
+  }
+
+  .material-icons { font-size: 20px; }
+}
+
+// Recent Section
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.view-all {
+  font-size: 0.82rem;
+  color: var(--primary-light);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-muted);
+
+  .empty-icon {
+    font-size: 48px;
+    opacity: 0.4;
+  }
+
+  p { font-size: 0.9rem; }
+}
+
+.entries-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.entry-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+
+  .entry-date {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 36px;
+
+    .date-day {
+      font-size: 1.2rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .date-month {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+  }
+
+  .entry-main {
+    flex: 1;
+
+    .entry-weight {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .entry-unit {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-left: 2px;
+    }
+
+    .entry-note {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+  }
+}

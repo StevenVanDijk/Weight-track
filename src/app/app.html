@@ -1,0 +1,26 @@
+<div class="app-shell">
+  <header class="app-header">
+    <div class="header-content">
+      <span class="material-icons app-logo">monitor_weight</span>
+      <h1 class="app-title">WeightTrack</h1>
+    </div>
+  </header>
+
+  <main class="app-content">
+    <router-outlet />
+  </main>
+
+  <nav class="bottom-nav">
+    @for (item of navItems; track item.path) {
+      <a
+        [routerLink]="item.path"
+        routerLinkActive="active"
+        class="nav-item"
+        [attr.aria-label]="item.label"
+      >
+        <span class="material-icons nav-icon">{{ item.icon }}</span>
+        <span class="nav-label">{{ item.label }}</span>
+      </a>
+    }
+  </nav>
+</div>

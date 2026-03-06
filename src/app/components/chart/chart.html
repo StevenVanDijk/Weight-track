@@ -1,0 +1,53 @@
+<div class="chart-page fade-in">
+  <div class="page-header">
+    <h2>Progress Chart</h2>
+    <p class="subtitle">Your weight journey over time</p>
+  </div>
+
+  <!-- Period selector -->
+  <div class="period-selector">
+    @for (p of periods; track p.value) {
+      <button
+        class="period-btn"
+        [class.active]="selectedPeriod === p.value"
+        (click)="selectPeriod(p.value)"
+      >
+        {{ p.label }}
+      </button>
+    }
+  </div>
+
+  <!-- Chart canvas -->
+  <div class="chart-container card">
+    <canvas #canvas class="weight-canvas"></canvas>
+  </div>
+
+  <!-- Summary stats -->
+  @if (filteredEntries().length >= 2) {
+    <div class="summary-row">
+      <div class="summary-card card">
+        <div class="summary-value">{{ filteredEntries()[0].weight | number:'1.1-1' }}</div>
+        <div class="summary-label">Start</div>
+      </div>
+      <div class="summary-card card">
+        <div class="summary-value">{{ filteredEntries()[filteredEntries().length - 1].weight | number:'1.1-1' }}</div>
+        <div class="summary-label">Latest</div>
+      </div>
+      <div class="summary-card card"
+        [class.positive]="(filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) > 0"
+        [class.negative]="(filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) < 0">
+        <div class="summary-value">
+          {{ (filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) > 0 ? '+' : '' }}{{ (filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) | number:'1.1-1' }}
+        </div>
+        <div class="summary-label">Change</div>
+      </div>
+    </div>
+  }
+
+  @if (allEntries().length < 2) {
+    <div class="no-data card">
+      <span class="material-icons">show_chart</span>
+      <p>Add at least 2 weight entries to see your chart.</p>
+    </div>
+  }
+</div>

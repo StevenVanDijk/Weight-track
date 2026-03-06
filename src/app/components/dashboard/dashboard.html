@@ -1,0 +1,138 @@
+<div class="dashboard fade-in">
+  <!-- Stats Grid -->
+  <section class="stats-grid">
+    <div class="stat-card primary">
+      <div class="stat-icon"><span class="material-icons">monitor_weight</span></div>
+      <div class="stat-body">
+        <div class="stat-value">
+          @if (stats().current) {
+            {{ stats().current | number:'1.1-1' }}
+            <span class="stat-unit">{{ stats().unit }}</span>
+          } @else {
+            <span class="stat-empty">—</span>
+          }
+        </div>
+        <div class="stat-label">Current Weight</div>
+      </div>
+    </div>
+
+    <div class="stat-card" [class.success]="(stats().weeklyChange ?? 0) < 0" [class.danger]="(stats().weeklyChange ?? 0) > 0">
+      <div class="stat-icon"><span class="material-icons">trending_down</span></div>
+      <div class="stat-body">
+        <div class="stat-value">
+          @if (stats().weeklyChange !== null) {
+            {{ stats().weeklyChange! > 0 ? '+' : '' }}{{ stats().weeklyChange | number:'1.1-1' }}
+            <span class="stat-unit">{{ stats().unit }}</span>
+          } @else {
+            <span class="stat-empty">—</span>
+          }
+        </div>
+        <div class="stat-label">This Week</div>
+      </div>
+    </div>
+
+    <div class="stat-card" [class.success]="(stats().totalChange ?? 0) < 0" [class.danger]="(stats().totalChange ?? 0) > 0">
+      <div class="stat-icon"><span class="material-icons">swap_vert</span></div>
+      <div class="stat-body">
+        <div class="stat-value">
+          @if (stats().totalChange !== null) {
+            {{ stats().totalChange! > 0 ? '+' : '' }}{{ stats().totalChange | number:'1.1-1' }}
+            <span class="stat-unit">{{ stats().unit }}</span>
+          } @else {
+            <span class="stat-empty">—</span>
+          }
+        </div>
+        <div class="stat-label">Total Change</div>
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-icon"><span class="material-icons">equalizer</span></div>
+      <div class="stat-body">
+        <div class="stat-value">
+          @if (stats().avgWeight) {
+            {{ stats().avgWeight | number:'1.1-1' }}
+            <span class="stat-unit">{{ stats().unit }}</span>
+          } @else {
+            <span class="stat-empty">—</span>
+          }
+        </div>
+        <div class="stat-label">Average</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Goal Progress -->
+  @if (stats().goalWeight) {
+    <section class="goal-section card">
+      <div class="goal-header">
+        <div>
+          <h3 class="section-title">Goal Progress</h3>
+          <p class="goal-meta">
+            Target: <strong>{{ stats().goalWeight | number:'1.1-1' }} {{ stats().unit }}</strong>
+          </p>
+        </div>
+        @if (progressToGoal !== null) {
+          <div class="goal-percent">{{ progressToGoal }}%</div>
+        }
+      </div>
+      @if (progressToGoal !== null) {
+        <div class="progress-bar">
+          <div class="progress-fill" [style.width.%]="progressToGoal"></div>
+        </div>
+      }
+    </section>
+  }
+
+  <!-- Quick Actions -->
+  <section class="quick-actions">
+    <a routerLink="/add" class="action-btn primary-action">
+      <span class="material-icons">add_circle</span>
+      <span>Log Weight</span>
+    </a>
+    <a routerLink="/chart" class="action-btn">
+      <span class="material-icons">show_chart</span>
+      <span>View Chart</span>
+    </a>
+  </section>
+
+  <!-- Recent Entries -->
+  <section class="recent-section">
+    <div class="section-header">
+      <h2 class="section-title">Recent Entries</h2>
+      @if (entries().length > 0) {
+        <a routerLink="/history" class="view-all">View all</a>
+      }
+    </div>
+
+    @if (recentEntries.length === 0) {
+      <div class="empty-state card">
+        <span class="material-icons empty-icon">scale</span>
+        <p>No entries yet. Start by logging your weight!</p>
+        <a routerLink="/add" class="btn btn-primary">
+          <span class="material-icons">add</span> Add First Entry
+        </a>
+      </div>
+    } @else {
+      <div class="entries-list">
+        @for (entry of recentEntries; track entry.id) {
+          <div class="entry-item card">
+            <div class="entry-date">
+              <span class="date-day">{{ entry.date | date:'d' }}</span>
+              <span class="date-month">{{ entry.date | date:'MMM' }}</span>
+            </div>
+            <div class="entry-main">
+              <div class="entry-weight">
+                {{ entry.weight | number:'1.1-1' }}
+                <span class="entry-unit">{{ entry.unit }}</span>
+              </div>
+              @if (entry.note) {
+                <div class="entry-note">{{ entry.note }}</div>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </section>
+</div>

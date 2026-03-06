@@ -1,0 +1,118 @@
+// CSS custom properties for theming
+:root {
+  --primary: #4f46e5;
+  --primary-light: #818cf8;
+  --primary-dark: #3730a3;
+  --secondary: #06b6d4;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --bg: #0f172a;
+  --bg-card: #1e293b;
+  --bg-card-hover: #263245;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --border: #334155;
+  --nav-height: 68px;
+  --header-height: 56px;
+  --radius: 16px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.app-header {
+  height: var(--header-height);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+
+  .header-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .app-logo {
+    color: var(--primary-light);
+    font-size: 28px;
+  }
+
+  .app-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary-light), var(--secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0;
+  }
+}
+
+.app-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: var(--nav-height);
+  scroll-behavior: smooth;
+}
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--nav-height);
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+  padding-bottom: env(safe-area-inset-bottom);
+
+  .nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px 0;
+    text-decoration: none;
+    color: var(--text-muted);
+    transition: color 0.2s ease;
+
+    &.active {
+      color: var(--primary-light);
+
+      .nav-icon {
+        transform: scale(1.15);
+      }
+    }
+
+    .nav-icon {
+      font-size: 22px;
+      transition: transform 0.2s ease;
+    }
+
+    .nav-label {
+      font-size: 0.65rem;
+      font-weight: 500;
+      letter-spacing: 0.03em;
+    }
+  }
+}
