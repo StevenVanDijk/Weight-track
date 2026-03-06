@@ -1,4 +1,27 @@
 <div class="dashboard fade-in">
+
+  <!-- Gamification Banner -->
+  <a routerLink="/achievements" class="gam-banner card">
+    <div class="gam-level" [style.background]="levelInfo().color + '22'" [style.border-color]="levelInfo().color + '55'">
+      <span class="gam-level-num">{{ gamState().level }}</span>
+    </div>
+    <div class="gam-info">
+      <div class="gam-title">
+        <span [style.color]="levelInfo().color">{{ levelInfo().title }}</span>
+        <span class="gam-xp">{{ gamState().xp }} XP</span>
+      </div>
+      <div class="gam-xp-bar">
+        <div class="gam-xp-fill" [style.width.%]="xpProgress()" [style.background]="levelInfo().color"></div>
+      </div>
+    </div>
+    @if (gamState().currentStreak > 0) {
+      <div class="streak-badge">
+        <span class="material-icons streak-fire">local_fire_department</span>
+        <span class="streak-num">{{ gamState().currentStreak }}</span>
+      </div>
+    }
+  </a>
+
   <!-- Stats Grid -->
   <section class="stats-grid">
     <div class="stat-card primary">

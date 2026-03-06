@@ -1,0 +1,16 @@
+@if (current()) {
+  <div class="toast-wrap" [class.visible]="visible()" [class.rarity-{{ current()!.rarity }}]="true">
+    <div class="toast-glow rarity-{{ current()!.rarity }}"></div>
+    <div class="toast-icon-wrap rarity-{{ current()!.rarity }}">
+      <span class="material-icons toast-icon">{{ current()!.icon }}</span>
+    </div>
+    <div class="toast-body">
+      <div class="toast-label">Achievement Unlocked!</div>
+      <div class="toast-title">{{ current()!.title }}</div>
+      <div class="toast-desc">{{ current()!.description }}</div>
+    </div>
+    @if (current()!.xp > 0) {
+      <div class="toast-xp">+{{ current()!.xp }}<span>XP</span></div>
+    }
+  </div>
+}

@@ -11,12 +11,16 @@ export const routes: Routes = [
     loadComponent: () => import('./components/add-entry/add-entry').then(m => m.AddEntryComponent),
   },
   {
+    path: 'chart',
+    loadComponent: () => import('./components/chart/chart').then(m => m.ChartComponent),
+  },
+  {
     path: 'history',
     loadComponent: () => import('./components/history/history').then(m => m.HistoryComponent),
   },
   {
-    path: 'chart',
-    loadComponent: () => import('./components/chart/chart').then(m => m.ChartComponent),
+    path: 'achievements',
+    loadComponent: () => import('./components/achievements/achievements').then(m => m.AchievementsComponent),
   },
   { path: '**', redirectTo: 'dashboard' },
 ];

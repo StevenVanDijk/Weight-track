@@ -1,0 +1,105 @@
+<div class="achievements-page fade-in">
+  <!-- Player card -->
+  <div class="player-card card">
+    <div class="player-level" [style.background]="levelInfo().color + '22'" [style.border-color]="levelInfo().color + '66'">
+      <span class="level-number">{{ levelInfo().level }}</span>
+    </div>
+    <div class="player-info">
+      <div class="player-title" [style.color]="levelInfo().color">{{ levelInfo().title }}</div>
+      <div class="xp-row">
+        <span class="xp-value">{{ state().xp }} XP</span>
+        @if (nextLevel()) {
+          <span class="xp-next">/ {{ nextLevel()!.minXp }} XP</span>
+        } @else {
+          <span class="xp-next">· Max Level</span>
+        }
+      </div>
+      <div class="xp-bar">
+        <div class="xp-fill" [style.width.%]="xpProgress()" [style.background]="levelInfo().color"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="mini-stat card">
+      <span class="material-icons mini-icon" style="color: #f59e0b">local_fire_department</span>
+      <div class="mini-value">{{ state().currentStreak }}</div>
+      <div class="mini-label">Streak</div>
+    </div>
+    <div class="mini-stat card">
+      <span class="material-icons mini-icon" style="color: #818cf8">bolt</span>
+      <div class="mini-value">{{ state().longestStreak }}</div>
+      <div class="mini-label">Best Streak</div>
+    </div>
+    <div class="mini-stat card">
+      <span class="material-icons mini-icon" style="color: #10b981">emoji_events</span>
+      <div class="mini-value">{{ unlocked().length }}</div>
+      <div class="mini-label">Badges</div>
+    </div>
+  </div>
+
+  <!-- Level roadmap -->
+  <div class="section-header"><h3>Levels</h3></div>
+  <div class="level-roadmap card">
+    @for (lvl of levels; track lvl.level) {
+      <div class="level-step" [class.reached]="state().level >= lvl.level" [class.current]="state().level === lvl.level">
+        <div class="level-dot" [style.background]="state().level >= lvl.level ? lvl.color : 'var(--border)'"></div>
+        <div class="level-step-info">
+          <span class="level-step-num" [style.color]="state().level >= lvl.level ? lvl.color : 'var(--text-muted)'">Lv{{ lvl.level }}</span>
+          <span class="level-step-name">{{ lvl.title }}</span>
+        </div>
+        <span class="level-step-xp">{{ lvl.minXp }} XP</span>
+      </div>
+    }
+  </div>
+
+  <!-- Unlocked achievements -->
+  @if (unlocked().length > 0) {
+    <div class="section-header">
+      <h3>Unlocked <span class="badge-count">{{ unlocked().length }}</span></h3>
+    </div>
+    <div class="achievements-grid">
+      @for (a of unlocked(); track a.id) {
+        <div class="achievement-card card unlocked rarity-{{ a.rarity }}">
+          <div class="ach-icon-wrap">
+            <span class="material-icons ach-icon">{{ a.icon }}</span>
+          </div>
+          <div class="ach-body">
+            <div class="ach-title">{{ a.title }}</div>
+            <div class="ach-desc">{{ a.description }}</div>
+            <div class="ach-footer">
+              <span class="rarity-badge rarity-{{ a.rarity }}">{{ rarityLabel[a.rarity] }}</span>
+              @if (a.xp > 0) { <span class="xp-pill">+{{ a.xp }} XP</span> }
+            </div>
+          </div>
+          <span class="check-mark material-icons">check_circle</span>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Locked achievements -->
+  @if (locked().length > 0) {
+    <div class="section-header">
+      <h3>Locked <span class="badge-count locked-count">{{ locked().length }}</span></h3>
+    </div>
+    <div class="achievements-grid">
+      @for (a of locked(); track a.id) {
+        <div class="achievement-card card locked rarity-{{ a.rarity }}">
+          <div class="ach-icon-wrap locked-icon">
+            <span class="material-icons ach-icon">lock</span>
+          </div>
+          <div class="ach-body">
+            <div class="ach-title">{{ a.title }}</div>
+            <div class="ach-desc">{{ a.description }}</div>
+            <div class="ach-footer">
+              <span class="rarity-badge rarity-{{ a.rarity }}">{{ rarityLabel[a.rarity] }}</span>
+              @if (a.xp > 0) { <span class="xp-pill muted">+{{ a.xp }} XP</span> }
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>

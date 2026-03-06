@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { WeightService } from '../../services/weight';
+import { GamificationService } from '../../services/gamification';
 
 export { AddEntryComponent };
 
@@ -14,6 +15,7 @@ export { AddEntryComponent };
 class AddEntryComponent {
   private readonly router = inject(Router);
   protected readonly weightService = inject(WeightService);
+  private readonly gam = inject(GamificationService);
 
   protected weight = signal<number | null>(null);
   protected date = signal(new Date().toISOString().split('T')[0]);
@@ -21,7 +23,6 @@ class AddEntryComponent {
   protected unit = signal<'kg' | 'lbs'>(this.weightService.settings().unit);
   protected saved = signal(false);
   protected error = signal('');
-
   protected goalWeight = signal<number | null>(this.weightService.settings().goalWeight);
 
   get weightInput(): number | null { return this.weight(); }
@@ -42,7 +43,7 @@ class AddEntryComponent {
   protected submit(): void {
     const w = this.weight();
     if (!w || w <= 0 || w > 500) {
-      this.error.set('Please enter a valid weight (1-500).');
+      this.error.set('Please enter a valid weight (1–500).');
       return;
     }
     this.error.set('');
@@ -59,6 +60,9 @@ class AddEntryComponent {
     } else {
       this.weightService.updateSettings({ unit: this.unit() });
     }
+
+    // Trigger gamification after the entry + settings are saved
+    this.gam.onEntryAdded();
 
     this.saved.set(true);
     setTimeout(() => this.router.navigate(['/dashboard']), 800);

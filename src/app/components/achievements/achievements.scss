@@ -1,0 +1,247 @@
+.achievements-page {
+  padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+// Player Card
+.player-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+}
+
+.player-level {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  .level-number {
+    font-size: 1.8rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+}
+
+.player-info { flex: 1; min-width: 0; }
+
+.player-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.xp-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 4px 0 8px;
+
+  .xp-value { font-size: 0.9rem; font-weight: 600; }
+  .xp-next  { font-size: 0.78rem; color: var(--text-muted); }
+}
+
+.xp-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+
+  .xp-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+}
+
+// Mini stats
+.stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.mini-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 8px;
+  text-align: center;
+
+  .mini-icon { font-size: 22px; }
+  .mini-value { font-size: 1.4rem; font-weight: 700; line-height: 1; }
+  .mini-label { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+}
+
+// Level roadmap
+.level-roadmap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 16px;
+}
+
+.level-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  position: relative;
+
+  &:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 32px;
+    width: 2px;
+    height: calc(100% - 12px);
+    background: var(--border);
+  }
+
+  &.reached:not(:last-child)::after { background: var(--primary-light); }
+
+  .level-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    z-index: 1;
+  }
+
+  .level-step-info {
+    flex: 1;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .level-step-num  { font-size: 0.82rem; font-weight: 700; }
+  .level-step-name { font-size: 0.82rem; color: var(--text-muted); }
+  .level-step-xp   { font-size: 0.75rem; color: var(--text-muted); }
+
+  &.current .level-dot {
+    box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.25);
+  }
+}
+
+// Section header
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  h3 { font-size: 0.95rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+}
+
+.badge-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 1px 7px;
+
+  &.locked-count { background: var(--border); color: var(--text-muted); }
+}
+
+// Achievements grid
+.achievements-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.achievement-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  position: relative;
+  transition: background 0.2s;
+
+  &.unlocked {
+    &.rarity-common    { border-color: rgba(148, 163, 184, 0.3); }
+    &.rarity-rare      { border-color: rgba(6, 182, 212, 0.4); }
+    &.rarity-epic      { border-color: rgba(129, 140, 248, 0.5); }
+    &.rarity-legendary { border-color: rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.04); }
+  }
+
+  &.locked {
+    opacity: 0.55;
+  }
+}
+
+.ach-icon-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: rgba(79, 70, 229, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  &.locked-icon { background: var(--border); }
+
+  .ach-icon { font-size: 22px; color: var(--primary-light); }
+}
+
+// Rarity icon colors
+.rarity-rare      .ach-icon-wrap:not(.locked-icon) { background: rgba(6, 182, 212, 0.15); .ach-icon { color: #06b6d4; } }
+.rarity-epic      .ach-icon-wrap:not(.locked-icon) { background: rgba(129, 140, 248, 0.15); .ach-icon { color: #818cf8; } }
+.rarity-legendary .ach-icon-wrap:not(.locked-icon) { background: rgba(245, 158, 11, 0.15); .ach-icon { color: #f59e0b; } }
+
+.ach-body { flex: 1; min-width: 0; }
+
+.ach-title { font-size: 0.95rem; font-weight: 700; }
+.ach-desc  { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+
+.ach-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.rarity-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 10px;
+
+  &.rarity-common    { background: rgba(148,163,184,0.15); color: #94a3b8; }
+  &.rarity-rare      { background: rgba(6,182,212,0.15);   color: #06b6d4; }
+  &.rarity-epic      { background: rgba(129,140,248,0.15); color: #818cf8; }
+  &.rarity-legendary { background: rgba(245,158,11,0.15);  color: #f59e0b; }
+}
+
+.xp-pill {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #10b981;
+  background: rgba(16,185,129,0.12);
+  padding: 2px 7px;
+  border-radius: 10px;
+
+  &.muted { color: var(--text-muted); background: var(--bg); }
+}
+
+.check-mark {
+  color: #10b981;
+  font-size: 18px;
+  flex-shrink: 0;
+}
