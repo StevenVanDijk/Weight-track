@@ -1,7 +1,7 @@
 @if (current()) {
-  <div class="toast-wrap" [class.visible]="visible()" [class.rarity-{{ current()!.rarity }}]="true">
-    <div class="toast-glow rarity-{{ current()!.rarity }}"></div>
-    <div class="toast-icon-wrap rarity-{{ current()!.rarity }}">
+  <div class="toast-wrap" [class.visible]="visible()" [class]="'toast-wrap' + (visible() ? ' visible' : '') + ' rarity-' + current()!.rarity">
+    <div class="toast-glow" [class]="'toast-glow rarity-' + current()!.rarity"></div>
+    <div class="toast-icon-wrap" [class]="'toast-icon-wrap rarity-' + current()!.rarity">
       <span class="material-icons toast-icon">{{ current()!.icon }}</span>
     </div>
     <div class="toast-body">
