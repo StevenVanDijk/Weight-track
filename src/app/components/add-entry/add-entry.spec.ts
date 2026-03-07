@@ -130,4 +130,84 @@ describe('AddEntryComponent', () => {
     (component as any).submit();
     expect(spy).toHaveBeenCalledWith(expect.objectContaining({ note: undefined }));
   });
+
+  // ─── Weight slider ────────────────────────────────────────────────────────
+
+  it('lastWeight is null when no entries exist', () => {
+    expect((component as any).lastWeight()).toBeNull();
+  });
+
+  it('lastWeight reflects the most recent entry', () => {
+    weightService.addEntry({ date: '2024-01-01', weight: 85 });
+    weightService.addEntry({ date: '2024-01-02', weight: 83 });
+    fixture.detectChanges();
+    expect((component as any).lastWeight()).toBe(83);
+  });
+
+  it('sliderMin is lastWeight minus 1 kg', () => {
+    weightService.addEntry({ date: '2024-01-01', weight: 80 });
+    fixture.detectChanges();
+    expect((component as any).sliderMin()).toBe(79);
+  });
+
+  it('sliderMax is lastWeight plus 1 kg', () => {
+    weightService.addEntry({ date: '2024-01-01', weight: 80 });
+    fixture.detectChanges();
+    expect((component as any).sliderMax()).toBe(81);
+  });
+
+  it('sliderMin and sliderMax are rounded to 1 decimal', () => {
+    weightService.addEntry({ date: '2024-01-01', weight: 79.75 });
+    fixture.detectChanges();
+    expect((component as any).sliderMin()).toBe(78.8);
+    expect((component as any).sliderMax()).toBe(80.8);
+  });
+
+  it('slider is hidden when there are no previous entries', async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const slider = fixture.nativeElement.querySelector('.weight-slider');
+    expect(slider).toBeNull();
+  });
+
+  it('slider is visible when a previous entry exists', async () => {
+    weightService.addEntry({ date: '2024-01-01', weight: 80 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const slider = fixture.nativeElement.querySelector('.weight-slider');
+    expect(slider).toBeTruthy();
+  });
+
+  it('slider min/max attributes reflect the computed bounds', async () => {
+    weightService.addEntry({ date: '2024-01-01', weight: 80 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const slider: HTMLInputElement = fixture.nativeElement.querySelector('.weight-slider');
+    expect(Number(slider.min)).toBe(79);
+    expect(Number(slider.max)).toBe(81);
+  });
+
+  it('setting sliderValue updates the weight signal rounded to 1 decimal', () => {
+    (component as any).sliderValue = 79.333;
+    expect((component as any).weight()).toBe(79.3);
+  });
+
+  it('sliderValue getter returns lastWeight when weight is null', () => {
+    weightService.addEntry({ date: '2024-01-01', weight: 82 });
+    fixture.detectChanges();
+    expect((component as any).sliderValue).toBe(82);
+  });
+
+  it('sliderValue getter returns current weight when set', () => {
+    (component as any).weight.set(79.5);
+    expect((component as any).sliderValue).toBe(79.5);
+  });
+
+  it('slider and number input stay in sync: setting sliderValue updates the weight signal read by the number input', () => {
+    weightService.addEntry({ date: '2024-01-01', weight: 80 });
+    fixture.detectChanges();
+    (component as any).sliderValue = 79.5;
+    // Both slider and number input bind to the same weight signal
+    expect((component as any).weightInput).toBe(79.5);
+  });
 });

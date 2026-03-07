@@ -27,6 +27,22 @@
         autofocus
         required
       />
+      @if (lastWeight() !== null) {
+        <div class="weight-slider-wrap">
+          <span class="slider-bound">{{ sliderMin() }}</span>
+          <input
+            type="range"
+            [(ngModel)]="sliderValue"
+            name="weightSlider"
+            [min]="sliderMin()"
+            [max]="sliderMax()"
+            step="0.1"
+            class="weight-slider"
+            aria-label="Weight slider"
+          />
+          <span class="slider-bound">{{ sliderMax() }}</span>
+        </div>
+      }
       @if (error()) {
         <span class="error-msg">{{ error() }}</span>
       }

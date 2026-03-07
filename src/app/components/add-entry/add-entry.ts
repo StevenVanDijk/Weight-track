@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, computed } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { WeightService } from '../../services/weight';
@@ -24,8 +24,26 @@ class AddEntryComponent {
   protected error = signal('');
   protected goalWeight = signal<number | null>(this.weightService.settings().goalWeight);
 
+  /** Weight of the most recent stored entry, or null if none. */
+  protected readonly lastWeight = computed<number | null>(() => {
+    const entries = this.weightService.entries();
+    return entries.length > 0 ? entries[entries.length - 1].weight : null;
+  });
+
+  /** Slider bounds: last weight ±1 kg, rounded to 1 decimal. */
+  protected readonly sliderMin = computed<number>(() =>
+    Math.round(((this.lastWeight() ?? 80) - 1) * 10) / 10
+  );
+
+  protected readonly sliderMax = computed<number>(() =>
+    Math.round(((this.lastWeight() ?? 80) + 1) * 10) / 10
+  );
+
   get weightInput(): number | null { return this.weight(); }
   set weightInput(v: number | null) { this.weight.set(v); }
+
+  get sliderValue(): number { return this.weight() ?? this.lastWeight() ?? 80; }
+  set sliderValue(v: number) { this.weight.set(Math.round(v * 10) / 10); }
 
   get dateInput(): string { return this.date(); }
   set dateInput(v: string) { this.date.set(v); }

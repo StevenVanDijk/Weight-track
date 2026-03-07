@@ -21,10 +21,20 @@
 - **US-012** As a user, after a successful save I see a confirmation message so that I have feedback.
 - **US-013** As a user, after a successful save I am automatically redirected to the Dashboard after 800 ms.
 
-### 1.2 Goal Weight
-- **US-014** As a user, I can set an optional goal weight on the Add Entry screen so that the app can track my progress toward it.
-- **US-015** As a user, my goal weight is persisted across sessions so that I don't re-enter it each time.
-- **US-016** As a user, I can clear my goal weight by leaving the field blank so that I can remove the target.
+### 1.2 Weight Slider
+- **US-014** As a user, when I have at least one previous entry, a range slider appears below the number input so that I can quickly fine-tune my weight without typing.
+- **US-015** As a user, the slider range spans from my last logged weight minus 1 kg to my last logged weight plus 1 kg so that it covers the typical day-to-day fluctuation.
+- **US-016** As a user, the slider moves in 0.1 kg steps so that I can select precise values.
+- **US-017** As a user, the slider is hidden when there are no previous entries so that it only appears once there is a meaningful reference weight.
+- **US-018** As a user, the slider and the number input are always in sync — moving the slider updates the number field and vice versa.
+- **US-019** As a user, the slider initialises to my last logged weight so that I start at my most recent measurement.
+- **US-020** As a user, the minimum and maximum values of the slider are shown beside it so that I know the range at a glance.
+- **US-021** As a user, I can still type any value (1–500 kg) directly in the number input even when the slider is present, so that I am not restricted to the ±1 kg range.
+
+### 1.3 Goal Weight
+- **US-022** As a user, I can set an optional goal weight on the Add Entry screen so that the app can track my progress toward it.
+- **US-023** As a user, my goal weight is persisted across sessions so that I don't re-enter it each time.
+- **US-024** As a user, I can clear my goal weight by leaving the field blank so that I can remove the target.
 
 ---
 
