@@ -45,7 +45,9 @@
 
 .weight-input-group {
   label {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 0.85rem;
     font-weight: 600;
     color: var(--text-muted);
@@ -53,55 +55,35 @@
     letter-spacing: 0.05em;
     margin-bottom: 8px;
   }
-}
 
-.weight-row {
-  display: flex;
-  gap: 10px;
-
-  .weight-field {
-    flex: 1;
-    background: var(--bg);
-    border: 2px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    font-size: 2rem;
-    font-weight: 700;
-    padding: 16px;
-    text-align: center;
-    transition: border-color 0.2s;
-
-    &:focus {
-      outline: none;
-      border-color: var(--primary-light);
-    }
+  .unit-label {
+    font-size: 0.75rem;
+    background: rgba(129, 140, 248, 0.15);
+    color: var(--primary-light);
+    padding: 1px 7px;
+    border-radius: 10px;
+    text-transform: lowercase;
+    letter-spacing: 0;
   }
 }
 
-.unit-toggle {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.weight-field {
+  width: 100%;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 2.5rem;
+  font-weight: 700;
+  padding: 16px;
+  text-align: center;
+  transition: border-color 0.2s;
+  font-family: inherit;
 
-  button {
-    padding: 0 20px;
-    height: 100%;
-    flex: 1;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-family: inherit;
-
-    &.active {
-      background: var(--primary);
-      border-color: var(--primary);
-      color: white;
-    }
+  &:focus {
+    outline: none;
+    border-color: var(--primary-light);
+    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15);
   }
 }
 

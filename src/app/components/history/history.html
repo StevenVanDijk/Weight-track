@@ -31,7 +31,7 @@
           <div class="entry-main">
             <div class="entry-weight-row">
               <span class="entry-weight">{{ entry.weight | number:'1.1-1' }}</span>
-              <span class="entry-unit">{{ entry.unit }}</span>
+              <span class="entry-unit">kg</span>
               @if (getDelta(entry, i) !== null) {
                 <span class="entry-delta"
                   [class.positive]="getDelta(entry, i)! > 0"

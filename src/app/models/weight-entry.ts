@@ -2,7 +2,6 @@ export interface WeightEntry {
   id: string;
   date: string; // ISO date string YYYY-MM-DD
   weight: number;
-  unit: 'kg' | 'lbs';
   note?: string;
 }
 
@@ -15,5 +14,4 @@ export interface WeightStats {
   avgWeight: number | null;
   totalChange: number | null;
   weeklyChange: number | null;
-  unit: 'kg' | 'lbs';
 }

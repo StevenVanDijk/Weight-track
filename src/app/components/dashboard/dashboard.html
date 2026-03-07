@@ -30,7 +30,7 @@
         <div class="stat-value">
           @if (stats().current) {
             {{ stats().current | number:'1.1-1' }}
-            <span class="stat-unit">{{ stats().unit }}</span>
+            <span class="stat-unit">kg</span>
           } @else {
             <span class="stat-empty">—</span>
           }
@@ -45,7 +45,7 @@
         <div class="stat-value">
           @if (stats().weeklyChange !== null) {
             {{ stats().weeklyChange! > 0 ? '+' : '' }}{{ stats().weeklyChange | number:'1.1-1' }}
-            <span class="stat-unit">{{ stats().unit }}</span>
+            <span class="stat-unit">kg</span>
           } @else {
             <span class="stat-empty">—</span>
           }
@@ -60,7 +60,7 @@
         <div class="stat-value">
           @if (stats().totalChange !== null) {
             {{ stats().totalChange! > 0 ? '+' : '' }}{{ stats().totalChange | number:'1.1-1' }}
-            <span class="stat-unit">{{ stats().unit }}</span>
+            <span class="stat-unit">kg</span>
           } @else {
             <span class="stat-empty">—</span>
           }
@@ -75,7 +75,7 @@
         <div class="stat-value">
           @if (stats().avgWeight) {
             {{ stats().avgWeight | number:'1.1-1' }}
-            <span class="stat-unit">{{ stats().unit }}</span>
+            <span class="stat-unit">kg</span>
           } @else {
             <span class="stat-empty">—</span>
           }
@@ -92,7 +92,7 @@
         <div>
           <h3 class="section-title">Goal Progress</h3>
           <p class="goal-meta">
-            Target: <strong>{{ stats().goalWeight | number:'1.1-1' }} {{ stats().unit }}</strong>
+            Target: <strong>{{ stats().goalWeight | number:'1.1-1' }} kg</strong>
           </p>
         </div>
         @if (progressToGoal !== null) {
@@ -147,7 +147,7 @@
             <div class="entry-main">
               <div class="entry-weight">
                 {{ entry.weight | number:'1.1-1' }}
-                <span class="entry-unit">{{ entry.unit }}</span>
+                <span class="entry-unit">kg</span>
               </div>
               @if (entry.note) {
                 <div class="entry-note">{{ entry.note }}</div>

@@ -20,7 +20,6 @@ class AddEntryComponent {
   protected weight = signal<number | null>(null);
   protected date = signal(new Date().toISOString().split('T')[0]);
   protected note = signal('');
-  protected unit = signal<'kg' | 'lbs'>(this.weightService.settings().unit);
   protected saved = signal(false);
   protected error = signal('');
   protected goalWeight = signal<number | null>(this.weightService.settings().goalWeight);
@@ -34,16 +33,13 @@ class AddEntryComponent {
   get noteInput(): string { return this.note(); }
   set noteInput(v: string) { this.note.set(v); }
 
-  get unitInput(): 'kg' | 'lbs' { return this.unit(); }
-  set unitInput(v: 'kg' | 'lbs') { this.unit.set(v); }
-
   get goalWeightInput(): number | null { return this.goalWeight(); }
   set goalWeightInput(v: number | null) { this.goalWeight.set(v); }
 
   protected submit(): void {
     const w = this.weight();
     if (!w || w <= 0 || w > 500) {
-      this.error.set('Please enter a valid weight (1–500).');
+      this.error.set('Please enter a valid weight (1–500 kg).');
       return;
     }
     this.error.set('');
@@ -51,17 +47,13 @@ class AddEntryComponent {
     this.weightService.addEntry({
       date: this.date(),
       weight: w,
-      unit: this.unit(),
       note: this.note().trim() || undefined,
     });
 
     if (this.goalWeight() !== this.weightService.settings().goalWeight) {
-      this.weightService.updateSettings({ goalWeight: this.goalWeight(), unit: this.unit() });
-    } else {
-      this.weightService.updateSettings({ unit: this.unit() });
+      this.weightService.updateSettings({ goalWeight: this.goalWeight() });
     }
 
-    // Trigger gamification after the entry + settings are saved
     this.gam.onEntryAdded();
 
     this.saved.set(true);

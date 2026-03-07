@@ -5,7 +5,6 @@ const STORAGE_KEY = 'weight_entries';
 const SETTINGS_KEY = 'weight_settings';
 
 export interface AppSettings {
-  unit: 'kg' | 'lbs';
   goalWeight: number | null;
   reminderEnabled: boolean;
 }
@@ -25,12 +24,11 @@ export class WeightService {
 
   readonly stats = computed<WeightStats>(() => {
     const sorted = this.entries();
-    const unit = this._settings().unit;
     if (sorted.length === 0) {
       return {
         current: null, startWeight: null, goalWeight: this._settings().goalWeight,
         minWeight: null, maxWeight: null, avgWeight: null,
-        totalChange: null, weeklyChange: null, unit,
+        totalChange: null, weeklyChange: null,
       };
     }
     const weights = sorted.map(e => e.weight);
@@ -41,10 +39,8 @@ export class WeightService {
     const avgWeight = weights.reduce((a, b) => a + b, 0) / weights.length;
     const totalChange = current - startWeight;
 
-    // Weekly change: compare current with entry ~7 days ago
     let weeklyChange: number | null = null;
-    const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const weekAgoStr = weekAgo.toISOString().split('T')[0];
     const olderEntries = sorted.filter(e => e.date <= weekAgoStr);
     if (olderEntries.length > 0) {
@@ -57,15 +53,11 @@ export class WeightService {
       avgWeight: Math.round(avgWeight * 10) / 10,
       totalChange: Math.round(totalChange * 10) / 10,
       weeklyChange: weeklyChange !== null ? Math.round(weeklyChange * 10) / 10 : null,
-      unit,
     };
   });
 
   addEntry(entry: Omit<WeightEntry, 'id'>): void {
-    const newEntry: WeightEntry = {
-      ...entry,
-      id: crypto.randomUUID(),
-    };
+    const newEntry: WeightEntry = { ...entry, id: crypto.randomUUID() };
     const existing = this._entries().findIndex(e => e.date === entry.date);
     if (existing >= 0) {
       const updated = [...this._entries()];
@@ -85,12 +77,6 @@ export class WeightService {
   updateSettings(settings: Partial<AppSettings>): void {
     this._settings.set({ ...this._settings(), ...settings });
     this.saveSettings();
-  }
-
-  convertWeight(weight: number, from: 'kg' | 'lbs', to: 'kg' | 'lbs'): number {
-    if (from === to) return weight;
-    if (from === 'kg' && to === 'lbs') return Math.round(weight * 2.20462 * 10) / 10;
-    return Math.round(weight / 2.20462 * 10) / 10;
   }
 
   requestNotificationPermission(): Promise<NotificationPermission> {
@@ -124,9 +110,9 @@ export class WeightService {
   private loadSettings(): AppSettings {
     try {
       const data = localStorage.getItem(SETTINGS_KEY);
-      return data ? JSON.parse(data) : { unit: 'kg', goalWeight: null, reminderEnabled: false };
+      return data ? JSON.parse(data) : { goalWeight: null, reminderEnabled: false };
     } catch {
-      return { unit: 'kg', goalWeight: null, reminderEnabled: false };
+      return { goalWeight: null, reminderEnabled: false };
     }
   }
 

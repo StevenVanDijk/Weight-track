@@ -14,33 +14,19 @@
   <form class="entry-form" (ngSubmit)="submit()" #f="ngForm">
     <!-- Weight Input -->
     <div class="weight-input-group">
-      <label>Weight</label>
-      <div class="weight-row">
-        <input
-          type="number"
-          [(ngModel)]="weightInput"
-          name="weight"
-          step="0.1"
-          min="1"
-          max="500"
-          placeholder="0.0"
-          class="weight-field"
-          autofocus
-          required
-        />
-        <div class="unit-toggle">
-          <button
-            type="button"
-            [class.active]="unitInput === 'kg'"
-            (click)="unitInput = 'kg'"
-          >kg</button>
-          <button
-            type="button"
-            [class.active]="unitInput === 'lbs'"
-            (click)="unitInput = 'lbs'"
-          >lbs</button>
-        </div>
-      </div>
+      <label>Weight <span class="unit-label">kg</span></label>
+      <input
+        type="number"
+        [(ngModel)]="weightInput"
+        name="weight"
+        step="0.1"
+        min="1"
+        max="500"
+        placeholder="0.0"
+        class="weight-field"
+        autofocus
+        required
+      />
       @if (error()) {
         <span class="error-msg">{{ error() }}</span>
       }
@@ -61,7 +47,7 @@
 
     <!-- Goal Weight -->
     <div class="form-group">
-      <label for="goal">Goal Weight (optional)</label>
+      <label for="goal">Goal Weight in kg (optional)</label>
       <input
         id="goal"
         type="number"
@@ -70,7 +56,7 @@
         step="0.1"
         min="1"
         max="500"
-        [placeholder]="'e.g. 70 ' + unitInput"
+        placeholder="e.g. 70"
       />
     </div>
 

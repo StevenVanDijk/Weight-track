@@ -202,6 +202,6 @@ class ChartComponent implements AfterViewInit {
     ctx.fillStyle = '#94a3b8';
     ctx.font = '10px Inter, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(this.stats().unit, 4, pad.top - 6);
+    ctx.fillText('kg', 4, pad.top - 6);
   }
 }
