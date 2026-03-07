@@ -4,12 +4,14 @@ import {
   ALL_ACHIEVEMENTS, LEVELS, LevelInfo,
 } from '../models/achievement';
 import { WeightService } from './weight';
+import { DbService } from '../db';
 
 const STORAGE_KEY = 'weight_gamification';
 
 @Injectable({ providedIn: 'root' })
 export class GamificationService {
   private readonly weightService = inject(WeightService);
+  private readonly db = inject(DbService);
   private _state = signal<GamificationState>(this.loadState());
 
   readonly state = this._state.asReadonly();
@@ -142,6 +144,17 @@ export class GamificationService {
     this.saveState();
   }
 
+  /** Called by APP_INITIALIZER. If localStorage was evicted, restores from IndexedDB. */
+  async restoreFromDb(): Promise<void> {
+    if (localStorage.getItem(STORAGE_KEY)) return;
+    const raw = await this.db.read(STORAGE_KEY);
+    if (raw && typeof raw === 'object') {
+      const s = raw as GamificationState;
+      this._state.set(s);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    }
+  }
+
   private loadState(): GamificationState {
     try {
       const data = localStorage.getItem(STORAGE_KEY);
@@ -152,7 +165,9 @@ export class GamificationService {
   }
 
   private saveState(): void {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this._state()));
+    const data = this._state();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    this.db.write(STORAGE_KEY, data).catch(() => {}); // durable backup, fire-and-forget
   }
 
   private defaultState(): GamificationState {

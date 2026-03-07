@@ -38,7 +38,7 @@ All routes are **lazy-loaded**. Routes: `/dashboard`, `/add`, `/chart`, `/histor
 ## Key Patterns
 
 - **State**: Angular signals (`signal`, `computed`). No RxJS.
-- **Persistence**: `localStorage` only — no backend. Two keys: `weight_entries`, `weight_gamification`, `weight_settings`.
+- **Persistence**: Dual-write — `localStorage` (fast synchronous reads) + IndexedDB via `src/app/db.ts` (durable backup). Keys: `weight_entries`, `weight_gamification`, `weight_settings`. An `APP_INITIALIZER` in `app.config.ts` restores from IndexedDB if localStorage was evicted, and calls `navigator.storage.persist()` to request non-evictable storage.
 - **Chart**: Raw HTML5 Canvas 2D API in `ChartComponent` — no chart library.
 - **PWA**: `@angular/pwa` service worker + `public/manifest.webmanifest`. Service worker only active in production build.
 - **Styles**: SCSS with CSS custom properties defined in `src/app/app.scss`. Dark theme only.

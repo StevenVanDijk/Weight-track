@@ -230,3 +230,13 @@
 - **US-130** As a developer, the Angular production build output (`dist/weight-track/browser`) is deployed, not the source.
 - **US-131** As a developer, all URL paths are rewritten to `index.html` on Vercel so that Angular client-side routing works.
 - **US-132** As a developer, static assets (JS, CSS, fonts, images) are served with long-lived `Cache-Control: immutable` headers.
+
+---
+
+## 11. Data Durability
+
+- **US-133** As a user, my data is written to IndexedDB on every save so that it survives browser storage eviction of `localStorage`.
+- **US-134** As a user, my data is also written to `localStorage` simultaneously so that the app loads instantly on the next visit without waiting for an IndexedDB read.
+- **US-135** As a user, if the browser clears `localStorage` (e.g. under storage pressure or via "Clear cookies"), my data is automatically restored from IndexedDB the next time the app launches.
+- **US-136** As a user, the app requests persistent storage permission (`navigator.storage.persist()`) at startup so that the browser will not silently evict my data without prompting me first.
+- **US-137** As a developer, all three data stores (`weight_entries`, `weight_settings`, `weight_gamification`) are mirrored in both `localStorage` and the `weight-track` IndexedDB database under the `kv` object store.

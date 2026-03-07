@@ -1,15 +1,28 @@
 import { TestBed } from '@angular/core/testing';
 import { WeightService } from './weight';
+import { DbService } from '../db';
 
 const STORAGE_KEY = 'weight_entries';
 const SETTINGS_KEY = 'weight_settings';
+
+/** A controllable mock for DbService used throughout these tests. */
+const mockDb = {
+  read:  vi.fn().mockResolvedValue(undefined),
+  write: vi.fn().mockResolvedValue(undefined),
+};
 
 describe('WeightService', () => {
   let service: WeightService;
 
   beforeEach(() => {
     localStorage.clear();
-    TestBed.configureTestingModule({});
+    mockDb.read.mockReset();
+    mockDb.read.mockResolvedValue(undefined);
+    mockDb.write.mockReset();
+    mockDb.write.mockResolvedValue(undefined);
+    TestBed.configureTestingModule({
+      providers: [{ provide: DbService, useValue: mockDb }],
+    });
     service = TestBed.inject(WeightService);
   });
 
@@ -260,6 +273,72 @@ describe('WeightService', () => {
 
       expect(clickSpy).toHaveBeenCalled();
       expect(anchor.download).toMatch(/weight-data-.*\.json/);
+    });
+  });
+
+  // ─── restoreFromDb ─────────────────────────────────────────────────────────
+
+  describe('restoreFromDb', () => {
+    it('does not call db.read when localStorage already has both keys', async () => {
+      service.addEntry({ date: '2024-01-01', weight: 80 });
+      service.updateSettings({ goalWeight: null }); // ensures SETTINGS_KEY is in localStorage too
+      mockDb.read.mockClear();
+      await service.restoreFromDb();
+      expect(mockDb.read).not.toHaveBeenCalled();
+    });
+
+    it('restores entries from IndexedDB when localStorage is empty', async () => {
+      const fakeEntries = [{ id: 'abc', date: '2024-01-01', weight: 80 }];
+      mockDb.read
+        .mockResolvedValueOnce(fakeEntries as unknown) // entries key
+        .mockResolvedValueOnce(undefined as unknown);  // settings key
+      localStorage.clear();
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({ providers: [{ provide: DbService, useValue: mockDb }] });
+      service = TestBed.inject(WeightService);
+
+      await service.restoreFromDb();
+
+      expect(service.entries().length).toBe(1);
+      expect(service.entries()[0].weight).toBe(80);
+    });
+
+    it('writes restored entries back to localStorage', async () => {
+      const fakeEntries = [{ id: 'abc', date: '2024-01-01', weight: 80 }];
+      mockDb.read
+        .mockResolvedValueOnce(fakeEntries as unknown)
+        .mockResolvedValueOnce(undefined as unknown);
+      localStorage.clear();
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({ providers: [{ provide: DbService, useValue: mockDb }] });
+      service = TestBed.inject(WeightService);
+
+      await service.restoreFromDb();
+
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+      expect(stored).toEqual(fakeEntries);
+    });
+
+    it('restores settings from IndexedDB when localStorage is empty', async () => {
+      mockDb.read
+        .mockResolvedValueOnce(undefined as unknown) // entries key
+        .mockResolvedValueOnce({ goalWeight: 72, reminderEnabled: true } as unknown);
+      localStorage.clear();
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({ providers: [{ provide: DbService, useValue: mockDb }] });
+      service = TestBed.inject(WeightService);
+
+      await service.restoreFromDb();
+
+      expect(service.settings().goalWeight).toBe(72);
+      expect(service.settings().reminderEnabled).toBe(true);
+    });
+
+    it('does not overwrite existing entries when IndexedDB returns undefined', async () => {
+      service.addEntry({ date: '2024-01-01', weight: 80 });
+      // localStorage has data, so read won't be called anyway
+      await service.restoreFromDb();
+      expect(service.entries().length).toBe(1);
     });
   });
 });

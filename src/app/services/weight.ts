@@ -1,5 +1,6 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
 import { WeightEntry, WeightStats } from '../models/weight-entry';
+import { DbService } from '../db';
 
 const STORAGE_KEY = 'weight_entries';
 const SETTINGS_KEY = 'weight_settings';
@@ -13,6 +14,8 @@ export interface AppSettings {
   providedIn: 'root',
 })
 export class WeightService {
+  private readonly db = inject(DbService);
+
   private _entries = signal<WeightEntry[]>(this.loadEntries());
   private _settings = signal<AppSettings>(this.loadSettings());
 
@@ -94,6 +97,25 @@ export class WeightService {
     }
   }
 
+  /** Called by APP_INITIALIZER. If localStorage was evicted, restores from IndexedDB. */
+  async restoreFromDb(): Promise<void> {
+    const [entriesRaw, settingsRaw] = await Promise.all([
+      localStorage.getItem(STORAGE_KEY) ? Promise.resolve(undefined) : this.db.read(STORAGE_KEY),
+      localStorage.getItem(SETTINGS_KEY) ? Promise.resolve(undefined) : this.db.read(SETTINGS_KEY),
+    ]);
+
+    if (entriesRaw !== undefined && Array.isArray(entriesRaw)) {
+      this._entries.set(entriesRaw as WeightEntry[]);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(entriesRaw));
+    }
+
+    if (settingsRaw !== undefined && settingsRaw && typeof settingsRaw === 'object') {
+      const s = settingsRaw as AppSettings;
+      this._settings.set(s);
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    }
+  }
+
   private loadEntries(): WeightEntry[] {
     try {
       const data = localStorage.getItem(STORAGE_KEY);
@@ -104,7 +126,9 @@ export class WeightService {
   }
 
   private saveEntries(): void {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this._entries()));
+    const data = this._entries();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    this.db.write(STORAGE_KEY, data).catch(() => {}); // durable backup, fire-and-forget
   }
 
   private loadSettings(): AppSettings {
@@ -117,7 +141,9 @@ export class WeightService {
   }
 
   private saveSettings(): void {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(this._settings()));
+    const data = this._settings();
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+    this.db.write(SETTINGS_KEY, data).catch(() => {}); // durable backup, fire-and-forget
   }
 
   exportData(): void {

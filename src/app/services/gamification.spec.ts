@@ -2,8 +2,14 @@ import { TestBed } from '@angular/core/testing';
 import { GamificationService } from './gamification';
 import { WeightService } from './weight';
 import { LEVELS, ALL_ACHIEVEMENTS } from '../models/achievement';
+import { DbService } from '../db';
 
 const GAM_KEY = 'weight_gamification';
+
+const mockDb = {
+  read:  vi.fn().mockResolvedValue(undefined),
+  write: vi.fn().mockResolvedValue(undefined),
+};
 
 describe('GamificationService', () => {
   let gam: GamificationService;
@@ -29,14 +35,18 @@ describe('GamificationService', () => {
     };
     localStorage.setItem(GAM_KEY, JSON.stringify(state));
     TestBed.resetTestingModule();
-    TestBed.configureTestingModule({});
+    TestBed.configureTestingModule({ providers: [{ provide: DbService, useValue: mockDb }] });
     gam = TestBed.inject(GamificationService);
     weight = TestBed.inject(WeightService);
   }
 
   beforeEach(() => {
     localStorage.clear();
-    TestBed.configureTestingModule({});
+    mockDb.read.mockReset();
+    mockDb.read.mockResolvedValue(undefined);
+    mockDb.write.mockReset();
+    mockDb.write.mockResolvedValue(undefined);
+    TestBed.configureTestingModule({ providers: [{ provide: DbService, useValue: mockDb }] });
     gam = TestBed.inject(GamificationService);
     weight = TestBed.inject(WeightService);
   });
@@ -438,6 +448,50 @@ describe('GamificationService', () => {
       weight.addEntry({ date: new Date().toISOString().split('T')[0], weight: 80 });
       const result = gam.onEntryAdded();
       expect(result.some(a => a.id === 'first_entry')).toBe(true);
+    });
+  });
+
+  // ─── restoreFromDb ─────────────────────────────────────────────────────────
+
+  describe('restoreFromDb', () => {
+    it('does not call db.read when localStorage already has gamification state', async () => {
+      // Simulate a prior session by putting the key in localStorage explicitly
+      localStorage.setItem(GAM_KEY, JSON.stringify({ xp: 50, level: 1, currentStreak: 0, longestStreak: 0, lastLogDate: null, unlockedAchievements: [], newlyUnlocked: [] }));
+      mockDb.read.mockClear();
+      await gam.restoreFromDb();
+      expect(mockDb.read).not.toHaveBeenCalled();
+    });
+
+    it('restores state from IndexedDB when localStorage is empty', async () => {
+      const fakeState = { xp: 300, level: 2, currentStreak: 5, longestStreak: 10, lastLogDate: '2024-01-10', unlockedAchievements: ['first_entry'], newlyUnlocked: [] };
+      mockDb.read.mockResolvedValueOnce(fakeState as unknown);
+      localStorage.removeItem(GAM_KEY);
+
+      await gam.restoreFromDb();
+
+      expect(gam.state().xp).toBe(300);
+      expect(gam.state().currentStreak).toBe(5);
+      expect(gam.state().unlockedAchievements).toContain('first_entry');
+    });
+
+    it('writes restored state back to localStorage', async () => {
+      const fakeState = { xp: 300, level: 2, currentStreak: 5, longestStreak: 10, lastLogDate: '2024-01-10', unlockedAchievements: ['first_entry'], newlyUnlocked: [] };
+      mockDb.read.mockResolvedValueOnce(fakeState as unknown);
+      localStorage.removeItem(GAM_KEY);
+
+      await gam.restoreFromDb();
+
+      const stored = JSON.parse(localStorage.getItem(GAM_KEY)!);
+      expect(stored.xp).toBe(300);
+    });
+
+    it('leaves default state intact when IndexedDB returns undefined', async () => {
+      mockDb.read.mockResolvedValueOnce(undefined as unknown);
+      localStorage.removeItem(GAM_KEY);
+
+      await gam.restoreFromDb();
+
+      expect(gam.state().xp).toBe(0); // default
     });
   });
 });

@@ -1,8 +1,10 @@
-import { ApplicationConfig, provideBrowserGlobalErrorListeners, isDevMode } from '@angular/core';
+import { ApplicationConfig, provideBrowserGlobalErrorListeners, isDevMode, APP_INITIALIZER } from '@angular/core';
 import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
 import { provideServiceWorker } from '@angular/service-worker';
+import { WeightService } from './services/weight';
+import { GamificationService } from './services/gamification';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -12,5 +14,18 @@ export const appConfig: ApplicationConfig = {
       enabled: !isDevMode(),
       registrationStrategy: 'registerWhenStable:30000',
     }),
+    {
+      provide: APP_INITIALIZER,
+      useFactory: (weight: WeightService, gam: GamificationService) => async () => {
+        // Request persistent storage so the browser won't evict this origin's data
+        if ('storage' in navigator && 'persist' in navigator.storage) {
+          navigator.storage.persist();
+        }
+        // Restore from IndexedDB if localStorage was cleared
+        await Promise.all([weight.restoreFromDb(), gam.restoreFromDb()]);
+      },
+      deps: [WeightService, GamificationService],
+      multi: true,
+    },
   ],
 };
