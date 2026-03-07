@@ -147,7 +147,7 @@ export class WeightService {
   }
 
   exportData(): void {
-    const data = JSON.stringify(this._entries(), null, 2);
+    const data = JSON.stringify(this.entries(), null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

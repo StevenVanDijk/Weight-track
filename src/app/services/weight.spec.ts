@@ -260,19 +260,43 @@ describe('WeightService', () => {
   // ─── exportData ────────────────────────────────────────────────────────────
 
   describe('exportData', () => {
-    it('triggers an anchor click for download', () => {
-      const clickSpy = vi.fn();
-      const anchor = document.createElement('a');
-      vi.spyOn(anchor, 'click').mockImplementation(clickSpy);
+    let anchor: HTMLAnchorElement;
+    let clickSpy: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      clickSpy = vi.fn();
+      anchor = document.createElement('a');
+      vi.spyOn(anchor, 'click').mockImplementation(clickSpy as () => void);
       vi.spyOn(document, 'createElement').mockReturnValue(anchor);
       URL.createObjectURL = vi.fn().mockReturnValue('blob:mock');
       URL.revokeObjectURL = vi.fn();
+    });
 
+    it('triggers an anchor click for download', () => {
       service.addEntry({ date: '2024-01-01', weight: 80 });
       service.exportData();
-
       expect(clickSpy).toHaveBeenCalled();
       expect(anchor.download).toMatch(/weight-data-.*\.json/);
+    });
+
+    it('exports all entries sorted by date ascending', () => {
+      service.addEntry({ date: '2024-01-03', weight: 82 });
+      service.addEntry({ date: '2024-01-01', weight: 80 });
+      service.addEntry({ date: '2024-01-02', weight: 81 });
+
+      let capturedJson = '';
+      const origStringify = JSON.stringify;
+      vi.spyOn(JSON, 'stringify').mockImplementationOnce((value: unknown, ...args: unknown[]) => {
+        capturedJson = origStringify(value, ...(args as [any, any]));
+        return capturedJson;
+      });
+
+      service.exportData();
+
+      const exported: { date: string; weight: number }[] = JSON.parse(capturedJson);
+      expect(exported).toHaveLength(3);
+      const dates = exported.map(e => e.date);
+      expect(dates).toEqual(['2024-01-01', '2024-01-02', '2024-01-03']);
     });
   });
 
