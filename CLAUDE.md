@@ -43,6 +43,14 @@ All routes are **lazy-loaded**. Routes: `/dashboard`, `/add`, `/chart`, `/histor
 - **PWA**: `@angular/pwa` service worker + `public/manifest.webmanifest`. Service worker only active in production build.
 - **Styles**: SCSS with CSS custom properties defined in `src/app/app.scss`. Dark theme only.
 
+## Contributing Rule
+
+**Every addition of functionality must be accompanied by:**
+1. Unit tests in the relevant `.spec.ts` file (services and/or components)
+2. New or updated user stories in `spec.md`
+
+No feature, behaviour change, or new component is considered complete without both.
+
 ## Adding an Achievement
 
 1. Add a new `AchievementId` union member in `src/app/models/achievement.ts`
