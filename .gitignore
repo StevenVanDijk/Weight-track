@@ -42,3 +42,6 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Auto-generated at build/start time — do not commit
+/src/build-info.ts

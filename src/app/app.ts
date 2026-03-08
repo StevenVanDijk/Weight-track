@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { AchievementToastComponent } from './components/achievement-toast/achievement-toast';
+import { BUILD_INFO } from '../build-info';
 
 @Component({
   selector: 'app-root',
@@ -10,6 +11,7 @@ import { AchievementToastComponent } from './components/achievement-toast/achiev
 })
 export class App {
   readonly title = 'WeightTrack';
+  readonly buildCommit = BUILD_INFO.commit;
 
   readonly navItems = [
     { path: '/dashboard',    icon: 'dashboard',   label: 'Home' },

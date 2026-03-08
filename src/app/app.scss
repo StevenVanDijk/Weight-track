@@ -45,6 +45,20 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    flex: 1;
+  }
+
+  .build-badge {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.65rem;
+    color: var(--border);
+    letter-spacing: 0.03em;
+    user-select: all;
+    cursor: default;
+
+    &:hover {
+      color: var(--text-muted);
+    }
   }
 
   .app-logo {
