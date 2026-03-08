@@ -12,6 +12,7 @@ import { BUILD_INFO } from '../build-info';
 export class App {
   readonly title = 'WeightTrack';
   readonly buildCommit = BUILD_INFO.commit;
+  readonly buildMessage = BUILD_INFO.message;
 
   readonly navItems = [
     { path: '/dashboard',    icon: 'dashboard',   label: 'Home' },
