@@ -7,6 +7,11 @@ export { ChartComponent };
 
 type Period = '7d' | '30d' | '90d' | 'all';
 
+interface TrendResult {
+  slope: number;     // kg per day
+  intercept: number; // kg at day offset 0 (first entry date)
+}
+
 @Component({
   selector: 'app-chart',
   imports: [DecimalPipe],
@@ -37,11 +42,49 @@ class ChartComponent implements AfterViewInit {
     return entries.filter(e => e.date >= cutoffStr);
   });
 
+  protected readonly trendLine = computed<TrendResult | null>(() =>
+    this.computeTrend(this.filteredEntries())
+  );
+
+  /** Day offset from first filtered entry at which the trend crosses the goal. */
+  private readonly targetDayOff = computed<number | null>(() => {
+    const trend = this.trendLine();
+    const goal = this.stats().goalWeight;
+    const entries = this.filteredEntries();
+    if (!trend || goal == null || entries.length < 2 || trend.slope === 0) return null;
+
+    const d = (goal - trend.intercept) / trend.slope;
+    if (!isFinite(d) || d < 0) return null;
+
+    const firstMs = new Date(entries[0].date + 'T00:00:00').getTime();
+    const lastMs  = new Date(entries[entries.length - 1].date + 'T00:00:00').getTime();
+    const lastDayOffset = (lastMs - firstMs) / 86400000;
+
+    // Only show projection that is ahead of the last entry and within 5 years
+    if (d <= lastDayOffset || d > lastDayOffset + 365 * 5) return null;
+    return d;
+  });
+
+  protected readonly goalHitDate = computed<Date | null>(() => {
+    const dayOff = this.targetDayOff();
+    const entries = this.filteredEntries();
+    if (dayOff == null || entries.length < 2) return null;
+    const firstMs = new Date(entries[0].date + 'T00:00:00').getTime();
+    return new Date(firstMs + dayOff * 86400000);
+  });
+
+  protected readonly daysLeft = computed<number | null>(() => {
+    const target = this.goalHitDate();
+    if (!target) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return Math.round((target.getTime() - today.getTime()) / 86400000);
+  });
+
   private initialized = false;
 
   constructor() {
     effect(() => {
-      // Re-draw when entries change
       const _ = this.allEntries();
       if (this.initialized) {
         setTimeout(() => this.drawChart(), 10);
@@ -59,6 +102,24 @@ class ChartComponent implements AfterViewInit {
     setTimeout(() => this.drawChart(), 10);
   }
 
+  private computeTrend(entries: WeightEntry[]): TrendResult | null {
+    if (entries.length < 2) return null;
+    const firstMs = new Date(entries[0].date + 'T00:00:00').getTime();
+    const xs = entries.map(e => (new Date(e.date + 'T00:00:00').getTime() - firstMs) / 86400000);
+    const ys = entries.map(e => e.weight);
+    const n = xs.length;
+    const sumX  = xs.reduce((a, b) => a + b, 0);
+    const sumY  = ys.reduce((a, b) => a + b, 0);
+    const sumXY = xs.reduce((a, x, i) => a + x * ys[i], 0);
+    const sumX2 = xs.reduce((a, x) => a + x * x, 0);
+    const denom = n * sumX2 - sumX * sumX;
+    if (denom === 0) return null;
+    return {
+      slope:     (n * sumXY - sumX * sumY) / denom,
+      intercept: (sumY - (n * sumXY - sumX * sumY) / denom * sumX) / n,
+    };
+  }
+
   protected drawChart(): void {
     const canvas = this.canvasRef?.nativeElement;
     if (!canvas) return;
@@ -68,7 +129,7 @@ class ChartComponent implements AfterViewInit {
     const entries = this.filteredEntries();
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
+    canvas.width  = rect.width  * dpr;
     canvas.height = rect.height * dpr;
     ctx.scale(dpr, dpr);
 
@@ -76,9 +137,8 @@ class ChartComponent implements AfterViewInit {
     const H = rect.height;
     const pad = { top: 24, right: 20, bottom: 40, left: 50 };
     const chartW = W - pad.left - pad.right;
-    const chartH = H - pad.top - pad.bottom;
+    const chartH = H - pad.top  - pad.bottom;
 
-    // Clear
     ctx.clearRect(0, 0, W, H);
 
     if (entries.length < 2) {
@@ -89,118 +149,163 @@ class ChartComponent implements AfterViewInit {
       return;
     }
 
-    const weights = entries.map(e => e.weight);
-    const minW = Math.min(...weights);
-    const maxW = Math.max(...weights);
-    const range = maxW - minW || 1;
-    const padding = range * 0.15;
-    const yMin = minW - padding;
-    const yMax = maxW + padding;
+    // ── Day-based x axis ───────────────────────────────────────────────────
+    const firstMs      = new Date(entries[0].date + 'T00:00:00').getTime();
+    const lastMs       = new Date(entries[entries.length - 1].date + 'T00:00:00').getTime();
+    const lastDayOff   = (lastMs - firstMs) / 86400000;
+    const targetDayOff = this.targetDayOff();
 
-    const xScale = (i: number) => pad.left + (i / (entries.length - 1)) * chartW;
+    // Extend x domain to show projection, capped at 1 year ahead of last entry
+    const xDomain = targetDayOff !== null
+      ? Math.min(targetDayOff, lastDayOff + 365)
+      : Math.max(lastDayOff, 1);
+
+    const entryDayOffset = (e: WeightEntry) =>
+      (new Date(e.date + 'T00:00:00').getTime() - firstMs) / 86400000;
+    const xScale = (dayOff: number) => pad.left + (dayOff / xDomain) * chartW;
+
+    // ── Y range ────────────────────────────────────────────────────────────
+    const weights = entries.map(e => e.weight);
+    const minW  = Math.min(...weights);
+    const maxW  = Math.max(...weights);
+    const range = maxW - minW || 1;
+    const yPad  = range * 0.15;
+    const yMin  = minW - yPad;
+    const yMax  = maxW + yPad;
     const yScale = (w: number) => pad.top + chartH - ((w - yMin) / (yMax - yMin)) * chartH;
 
-    // Grid lines
+    // ── Grid lines ─────────────────────────────────────────────────────────
     ctx.strokeStyle = 'rgba(51, 65, 85, 0.6)';
     ctx.lineWidth = 1;
     const gridCount = 4;
     for (let i = 0; i <= gridCount; i++) {
-      const y = pad.top + (chartH / gridCount) * i;
+      const y   = pad.top + (chartH / gridCount) * i;
+      const val = yMax - ((yMax - yMin) / gridCount) * i;
       ctx.beginPath();
       ctx.moveTo(pad.left, y);
       ctx.lineTo(pad.left + chartW, y);
       ctx.stroke();
-
-      // Y axis labels
-      const val = yMax - ((yMax - yMin) / gridCount) * i;
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '11px Inter, sans-serif';
-      ctx.textAlign = 'right';
+      ctx.fillStyle  = '#94a3b8';
+      ctx.font       = '11px Inter, sans-serif';
+      ctx.textAlign  = 'right';
       ctx.fillText(val.toFixed(1), pad.left - 8, y + 4);
     }
 
-    // Goal line
+    // ── Goal line ──────────────────────────────────────────────────────────
     const goal = this.stats().goalWeight;
-    if (goal && goal >= yMin && goal <= yMax) {
+    if (goal != null && goal >= yMin && goal <= yMax) {
       const gy = yScale(goal);
       ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth   = 1.5;
       ctx.setLineDash([6, 4]);
       ctx.beginPath();
       ctx.moveTo(pad.left, gy);
       ctx.lineTo(pad.left + chartW, gy);
       ctx.stroke();
       ctx.setLineDash([]);
-
-      ctx.fillStyle = '#10b981';
-      ctx.font = '10px Inter, sans-serif';
-      ctx.textAlign = 'left';
+      ctx.fillStyle  = '#10b981';
+      ctx.font       = '10px Inter, sans-serif';
+      ctx.textAlign  = 'left';
       ctx.fillText(`Goal ${goal}`, pad.left + 4, gy - 4);
     }
 
-    // Gradient fill
+    // ── Trend line ─────────────────────────────────────────────────────────
+    const trend = this.trendLine();
+    if (trend) {
+      const trendY0 = yScale(trend.intercept);
+      const trendY1 = yScale(trend.intercept + trend.slope * xDomain);
+      ctx.strokeStyle = 'rgba(251, 146, 60, 0.8)';
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(xScale(0),       trendY0);
+      ctx.lineTo(xScale(xDomain), trendY1);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // ── Target-hit vertical marker ─────────────────────────────────────────
+    if (targetDayOff !== null && targetDayOff <= xDomain) {
+      const tx = xScale(targetDayOff);
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.9)';
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      ctx.moveTo(tx, pad.top);
+      ctx.lineTo(tx, pad.top + chartH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const targetDate = new Date(firstMs + targetDayOff * 86400000);
+      const label = `${targetDate.getDate()}/${targetDate.getMonth() + 1}`;
+      ctx.fillStyle  = '#10b981';
+      ctx.font       = 'bold 10px Inter, sans-serif';
+      ctx.textAlign  = tx > pad.left + chartW * 0.65 ? 'right' : 'left';
+      ctx.fillText(`* ${label}`, tx + (ctx.textAlign === 'left' ? 4 : -4), pad.top + 14);
+    }
+
+    // ── Gradient fill ──────────────────────────────────────────────────────
     const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + chartH);
     gradient.addColorStop(0, 'rgba(79, 70, 229, 0.35)');
     gradient.addColorStop(1, 'rgba(79, 70, 229, 0)');
 
     ctx.beginPath();
-    ctx.moveTo(xScale(0), yScale(entries[0].weight));
+    ctx.moveTo(xScale(entryDayOffset(entries[0])), yScale(entries[0].weight));
     for (let i = 1; i < entries.length; i++) {
-      const x0 = xScale(i - 1), y0 = yScale(entries[i - 1].weight);
-      const x1 = xScale(i), y1 = yScale(entries[i].weight);
+      const x0 = xScale(entryDayOffset(entries[i - 1])), y0 = yScale(entries[i - 1].weight);
+      const x1 = xScale(entryDayOffset(entries[i])),     y1 = yScale(entries[i].weight);
       const cpx = (x0 + x1) / 2;
       ctx.bezierCurveTo(cpx, y0, cpx, y1, x1, y1);
     }
-    ctx.lineTo(xScale(entries.length - 1), pad.top + chartH);
-    ctx.lineTo(xScale(0), pad.top + chartH);
+    ctx.lineTo(xScale(entryDayOffset(entries[entries.length - 1])), pad.top + chartH);
+    ctx.lineTo(xScale(entryDayOffset(entries[0])),                  pad.top + chartH);
     ctx.closePath();
     ctx.fillStyle = gradient;
     ctx.fill();
 
-    // Line
+    // ── Weight line ────────────────────────────────────────────────────────
     ctx.beginPath();
-    ctx.moveTo(xScale(0), yScale(entries[0].weight));
+    ctx.moveTo(xScale(entryDayOffset(entries[0])), yScale(entries[0].weight));
     for (let i = 1; i < entries.length; i++) {
-      const x0 = xScale(i - 1), y0 = yScale(entries[i - 1].weight);
-      const x1 = xScale(i), y1 = yScale(entries[i].weight);
+      const x0 = xScale(entryDayOffset(entries[i - 1])), y0 = yScale(entries[i - 1].weight);
+      const x1 = xScale(entryDayOffset(entries[i])),     y1 = yScale(entries[i].weight);
       const cpx = (x0 + x1) / 2;
       ctx.bezierCurveTo(cpx, y0, cpx, y1, x1, y1);
     }
     ctx.strokeStyle = '#818cf8';
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = 'round';
+    ctx.lineWidth   = 2.5;
+    ctx.lineJoin    = 'round';
     ctx.stroke();
 
-    // Data points
-    entries.forEach((e, i) => {
-      const x = xScale(i);
+    // ── Data points ────────────────────────────────────────────────────────
+    entries.forEach(e => {
+      const x = xScale(entryDayOffset(e));
       const y = yScale(e.weight);
       ctx.beginPath();
       ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = '#818cf8';
+      ctx.fillStyle   = '#818cf8';
       ctx.fill();
       ctx.strokeStyle = '#1e293b';
-      ctx.lineWidth = 2;
+      ctx.lineWidth   = 2;
       ctx.stroke();
     });
 
-    // X axis labels (show every Nth)
+    // ── X axis labels ──────────────────────────────────────────────────────
     const labelStep = Math.max(1, Math.floor(entries.length / 5));
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '10px Inter, sans-serif';
+    ctx.font      = '10px Inter, sans-serif';
     ctx.textAlign = 'center';
     entries.forEach((e, i) => {
       if (i % labelStep === 0 || i === entries.length - 1) {
-        const x = xScale(i);
+        const x    = xScale(entryDayOffset(e));
         const date = new Date(e.date + 'T00:00:00');
-        const label = `${date.getDate()}/${date.getMonth() + 1}`;
-        ctx.fillText(label, x, pad.top + chartH + 16);
+        ctx.fillText(`${date.getDate()}/${date.getMonth() + 1}`, x, pad.top + chartH + 16);
       }
     });
 
-    // Unit label
+    // ── Unit label ─────────────────────────────────────────────────────────
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '10px Inter, sans-serif';
+    ctx.font      = '10px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText('kg', 4, pad.top - 6);
   }

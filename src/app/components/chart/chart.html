@@ -22,6 +22,19 @@
     <canvas #canvas class="weight-canvas"></canvas>
   </div>
 
+  <!-- Days left to goal -->
+  @if (daysLeft() !== null) {
+    <div class="days-left-card card">
+      @if (daysLeft()! > 0) {
+        <div class="days-left-value">{{ daysLeft() }}</div>
+        <div class="days-left-label">Nr of days left</div>
+      } @else {
+        <div class="days-left-value goal-reached">Goal reached!</div>
+        <div class="days-left-label">Keep it up</div>
+      }
+    </div>
+  }
+
   <!-- Summary stats -->
   @if (filteredEntries().length >= 2) {
     <div class="summary-row">

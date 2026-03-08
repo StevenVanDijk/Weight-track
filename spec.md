@@ -110,7 +110,23 @@
 - **US-059** As a user, selecting a period immediately redraws the chart.
 - **US-060** As a user, entries outside the selected period are excluded from the chart.
 
-### 4.2 Summary Stats
+### 4.2 Trend Line
+- **US-063** As a user, a linear-regression trend line is drawn over the chart so that I can see the direction my weight is heading.
+- **US-064** As a user, the trend line is visually distinct from the weight line (dashed, orange) so that I can differentiate them.
+- **US-065** As a user, the trend line is computed using the entries visible in the selected period so that filtering affects the projection.
+
+### 4.3 Goal Hit Projection
+- **US-066** As a user, when a goal weight is set and the trend line converges on it, a vertical marker is drawn on the chart at the projected date so that I can see when I am on track to reach my goal.
+- **US-067** As a user, the projected goal-hit date is labelled on the chart so that I can read the date at a glance.
+- **US-068** As a user, the projection marker is only shown when the trend is moving toward the goal and the projected date is beyond the last logged entry.
+- **US-069** As a user, the chart x-axis extends to the projected date (capped at 1 year ahead) so that the marker is visible on screen.
+
+### 4.4 Days Left
+- **US-070** As a user, when a goal-hit date is projected, I see "Nr of days left" with the count displayed below the chart so that I have an at-a-glance countdown.
+- **US-071** As a user, when the projected date has already passed, I see "Goal reached!" instead of a negative count so that the UI remains encouraging.
+- **US-072** As a user, the days-left card is hidden when no goal is set or the trend does not converge on the goal, so that the UI is not cluttered.
+
+### 4.5 Summary Stats
 - **US-061** As a user, below the chart I see start weight, latest weight, and change for the selected period (when ≥ 2 entries exist).
 - **US-062** As a user, a negative period change is coloured green and a positive change is coloured red.
 

@@ -103,4 +103,114 @@ describe('ChartComponent', () => {
     const el: HTMLElement = fixture.nativeElement;
     expect(el.textContent).toContain('Add at least 2');
   });
+
+  // ─── computeTrend ───────────────────────────────────────────────────────
+
+  describe('computeTrend', () => {
+    it('returns null for fewer than 2 entries', () => {
+      expect((component as any).computeTrend([])).toBeNull();
+      expect((component as any).computeTrend([{ date: '2024-01-01', weight: 80 }])).toBeNull();
+    });
+
+    it('returns correct slope and intercept for a perfect linear decline', () => {
+      const entries = [
+        { id: '1', date: '2024-01-01', weight: 80 },
+        { id: '2', date: '2024-01-02', weight: 79 },
+        { id: '3', date: '2024-01-03', weight: 78 },
+      ];
+      const result = (component as any).computeTrend(entries);
+      expect(result).not.toBeNull();
+      expect(result.slope).toBeCloseTo(-1, 5);     // -1 kg/day
+      expect(result.intercept).toBeCloseTo(80, 5); // 80 kg at day 0
+    });
+
+    it('returns correct slope for constant weight (no change)', () => {
+      const entries = [
+        { id: '1', date: '2024-01-01', weight: 75 },
+        { id: '2', date: '2024-01-08', weight: 75 },
+        { id: '3', date: '2024-01-15', weight: 75 },
+      ];
+      const result = (component as any).computeTrend(entries);
+      expect(result).not.toBeNull();
+      expect(result!.slope).toBeCloseTo(0, 5);
+      expect(result!.intercept).toBeCloseTo(75, 5);
+    });
+
+    it('returns null when all entries have the same date (zero x-variance)', () => {
+      const entries = [
+        { id: '1', date: '2024-01-01', weight: 80 },
+        { id: '2', date: '2024-01-01', weight: 79 },
+      ];
+      expect((component as any).computeTrend(entries)).toBeNull();
+    });
+  });
+
+  // ─── trendLine signal ───────────────────────────────────────────────────
+
+  describe('trendLine', () => {
+    it('is null when fewer than 2 filtered entries', () => {
+      (component as any).selectPeriod('all');
+      expect((component as any).trendLine()).toBeNull();
+    });
+
+    it('is non-null with 2+ filtered entries', () => {
+      weightService.addEntry({ date: '2024-01-01', weight: 85 });
+      weightService.addEntry({ date: '2024-01-10', weight: 84 });
+      (component as any).selectPeriod('all');
+      expect((component as any).trendLine()).not.toBeNull();
+    });
+  });
+
+  // ─── goalHitDate / daysLeft ─────────────────────────────────────────────
+
+  describe('goalHitDate and daysLeft', () => {
+    it('goalHitDate is null when no goal is set', () => {
+      weightService.addEntry({ date: '2024-01-01', weight: 85 });
+      weightService.addEntry({ date: '2024-01-10', weight: 84 });
+      (component as any).selectPeriod('all');
+      expect((component as any).goalHitDate()).toBeNull();
+    });
+
+    it('goalHitDate is null when trend is flat (slope ≈ 0)', () => {
+      weightService.updateSettings({ goalWeight: 70 });
+      weightService.addEntry({ date: '2024-01-01', weight: 80 });
+      weightService.addEntry({ date: '2024-01-08', weight: 80 });
+      (component as any).selectPeriod('all');
+      expect((component as any).goalHitDate()).toBeNull();
+    });
+
+    it('goalHitDate is null when trend is moving away from goal', () => {
+      weightService.updateSettings({ goalWeight: 70 });
+      weightService.addEntry({ date: '2024-01-01', weight: 80 });
+      weightService.addEntry({ date: '2024-01-10', weight: 81 });
+      (component as any).selectPeriod('all');
+      expect((component as any).goalHitDate()).toBeNull();
+    });
+
+    it('goalHitDate returns a Date when trend converges on goal', () => {
+      weightService.updateSettings({ goalWeight: 70 });
+      // ~3 kg over 30 days → -0.1 kg/day → reaches 70 in ~100 days from first entry
+      weightService.addEntry({ date: '2024-01-01', weight: 80 });
+      weightService.addEntry({ date: '2024-02-01', weight: 77 });
+      (component as any).selectPeriod('all');
+      const d = (component as any).goalHitDate();
+      expect(d).toBeInstanceOf(Date);
+      expect(d.getFullYear()).toBeGreaterThanOrEqual(2024);
+    });
+
+    it('daysLeft is null when goalHitDate is null', () => {
+      weightService.addEntry({ date: '2024-01-01', weight: 80 });
+      weightService.addEntry({ date: '2024-01-10', weight: 79 });
+      (component as any).selectPeriod('all');
+      expect((component as any).daysLeft()).toBeNull();
+    });
+
+    it('daysLeft is a number when goalHitDate is set', () => {
+      weightService.updateSettings({ goalWeight: 70 });
+      weightService.addEntry({ date: '2024-01-01', weight: 80 });
+      weightService.addEntry({ date: '2024-02-01', weight: 77 });
+      (component as any).selectPeriod('all');
+      expect(typeof (component as any).daysLeft()).toBe('number');
+    });
+  });
 });
