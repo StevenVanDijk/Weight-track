@@ -1,5 +1,6 @@
-import { Component, inject, computed, ElementRef, ViewChild, AfterViewInit, effect } from '@angular/core';
+import { Component, inject, computed, ElementRef, ViewChild, AfterViewInit, effect, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { WeightService } from '../../services/weight';
 import { WeightEntry } from '../../models/weight-entry';
 
@@ -14,7 +15,7 @@ interface TrendResult {
 
 @Component({
   selector: 'app-chart',
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, RouterLink],
   templateUrl: './chart.html',
   styleUrl: './chart.scss',
 })
@@ -25,12 +26,18 @@ class ChartComponent implements AfterViewInit {
   protected readonly allEntries = this.weightService.entries;
   protected readonly stats = this.weightService.stats;
   protected selectedPeriod: Period = '30d';
+  protected showBmi = signal(false);
   protected readonly periods: { value: Period; label: string }[] = [
     { value: '7d', label: '7D' },
     { value: '30d', label: '30D' },
     { value: '90d', label: '90D' },
     { value: 'all', label: 'All' },
   ];
+
+  protected readonly heightM = computed<number | null>(() => {
+    const h = this.weightService.settings().height;
+    return h != null && h > 0 ? h / 100 : null;
+  });
 
   protected filteredEntries = computed(() => {
     const entries = this.allEntries();
@@ -81,6 +88,14 @@ class ChartComponent implements AfterViewInit {
     return Math.round((target.getTime() - today.getTime()) / 86400000);
   });
 
+  /** BMI computed from the latest entry weight and user height. */
+  protected readonly currentBmi = computed<number | null>(() => {
+    const hM = this.heightM();
+    const current = this.stats().current;
+    if (hM == null || current == null) return null;
+    return Math.round((current / (hM * hM)) * 10) / 10;
+  });
+
   private initialized = false;
 
   constructor() {
@@ -100,6 +115,16 @@ class ChartComponent implements AfterViewInit {
   protected selectPeriod(period: Period): void {
     this.selectedPeriod = period;
     setTimeout(() => this.drawChart(), 10);
+  }
+
+  protected toggleBmi(): void {
+    this.showBmi.set(!this.showBmi());
+    setTimeout(() => this.drawChart(), 10);
+  }
+
+  /** BMI = weight / heightM². Returns null when heightM is null. */
+  protected computeBmi(weight: number, heightM: number): number {
+    return weight / (heightM * heightM);
   }
 
   private computeTrend(entries: WeightEntry[]): TrendResult | null {
@@ -127,6 +152,9 @@ class ChartComponent implements AfterViewInit {
     if (!ctx) return;
 
     const entries = this.filteredEntries();
+    const heightM = this.heightM();
+    const drawBmi = this.showBmi() && heightM !== null;
+
     const dpr = window.devicePixelRatio || 1;
     const rect = canvas.getBoundingClientRect();
     canvas.width  = rect.width  * dpr;
@@ -135,7 +163,7 @@ class ChartComponent implements AfterViewInit {
 
     const W = rect.width;
     const H = rect.height;
-    const pad = { top: 24, right: 20, bottom: 40, left: 50 };
+    const pad = { top: 24, right: drawBmi ? 50 : 20, bottom: 40, left: 50 };
     const chartW = W - pad.left - pad.right;
     const chartH = H - pad.top  - pad.bottom;
 
@@ -308,5 +336,62 @@ class ChartComponent implements AfterViewInit {
     ctx.font      = '10px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText('kg', 4, pad.top - 6);
+
+    // ── BMI line (secondary axis) ──────────────────────────────────────────
+    if (drawBmi && heightM !== null) {
+      const bmiValues = entries.map(e => this.computeBmi(e.weight, heightM));
+      const minBmi = Math.min(...bmiValues);
+      const maxBmi = Math.max(...bmiValues);
+      const bmiRange = maxBmi - minBmi || 1;
+      const bmiYPad = bmiRange * 0.15;
+      const bmiYMin = minBmi - bmiYPad;
+      const bmiYMax = maxBmi + bmiYPad;
+      const bmiYScale = (b: number) => pad.top + chartH - ((b - bmiYMin) / (bmiYMax - bmiYMin)) * chartH;
+
+      // Right-side axis labels
+      for (let i = 0; i <= gridCount; i++) {
+        const val = bmiYMax - ((bmiYMax - bmiYMin) / gridCount) * i;
+        const y   = pad.top + (chartH / gridCount) * i;
+        ctx.fillStyle = '#f472b6';
+        ctx.font      = '11px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(val.toFixed(1), pad.left + chartW + 4, y + 4);
+      }
+
+      // BMI unit label
+      ctx.fillStyle = '#f472b6';
+      ctx.font      = '10px Inter, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('BMI', pad.left + chartW + pad.right - 2, pad.top - 6);
+
+      // BMI smooth line
+      ctx.beginPath();
+      ctx.moveTo(xScale(entryDayOffset(entries[0])), bmiYScale(bmiValues[0]));
+      for (let i = 1; i < entries.length; i++) {
+        const x0  = xScale(entryDayOffset(entries[i - 1]));
+        const y0  = bmiYScale(bmiValues[i - 1]);
+        const x1  = xScale(entryDayOffset(entries[i]));
+        const y1  = bmiYScale(bmiValues[i]);
+        const cpx = (x0 + x1) / 2;
+        ctx.bezierCurveTo(cpx, y0, cpx, y1, x1, y1);
+      }
+      ctx.strokeStyle = '#f472b6';
+      ctx.lineWidth   = 2;
+      ctx.lineJoin    = 'round';
+      ctx.stroke();
+
+      // BMI data points
+      entries.forEach((e, i) => {
+        const x = xScale(entryDayOffset(e));
+        const y = bmiYScale(bmiValues[i]);
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fillStyle   = '#f472b6';
+        ctx.fill();
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth   = 1.5;
+        ctx.stroke();
+      });
+    }
   }
 }

@@ -8,6 +8,7 @@ const SETTINGS_KEY = 'weight_settings';
 export interface AppSettings {
   goalWeight: number | null;
   reminderEnabled: boolean;
+  height: number | null; // height in centimetres
 }
 
 @Injectable({
@@ -134,9 +135,9 @@ export class WeightService {
   private loadSettings(): AppSettings {
     try {
       const data = localStorage.getItem(SETTINGS_KEY);
-      return data ? JSON.parse(data) : { goalWeight: null, reminderEnabled: false };
+      return data ? JSON.parse(data) : { goalWeight: null, reminderEnabled: false, height: null };
     } catch {
-      return { goalWeight: null, reminderEnabled: false };
+      return { goalWeight: null, reminderEnabled: false, height: null };
     }
   }
 

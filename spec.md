@@ -256,3 +256,22 @@
 - **US-135** As a user, if the browser clears `localStorage` (e.g. under storage pressure or via "Clear cookies"), my data is automatically restored from IndexedDB the next time the app launches.
 - **US-136** As a user, the app requests persistent storage permission (`navigator.storage.persist()`) at startup so that the browser will not silently evict my data without prompting me first.
 - **US-137** As a developer, all three data stores (`weight_entries`, `weight_settings`, `weight_gamification`) are mirrored in both `localStorage` and the `weight-track` IndexedDB database under the `kv` object store.
+
+
+---
+
+## 12. BMI Tracking
+
+### 12.1 Height Setting
+- **US-138** As a user, I can enter my height in centimetres on the Add Entry screen so that the app can calculate my BMI.
+- **US-139** As a user, my height is persisted across sessions so that I do not re-enter it each time.
+- **US-140** As a user, the height field is optional so that I can use the app without providing my height.
+
+### 12.2 BMI Chart
+- **US-141** As a user, when my height is set I see a "Show BMI" toggle button on the Chart screen so that I can overlay BMI onto the weight chart.
+- **US-142** As a user, when BMI is enabled, a pink BMI line is drawn on the chart with its own right-side Y axis so that both weight and BMI scales are clearly labelled.
+- **US-143** As a user, the BMI line uses the same time axis as the weight line so that daily changes are directly comparable.
+- **US-144** As a user, BMI data points are shown as dots on the BMI line so that individual measurements are identifiable.
+- **US-145** As a user, I see my current BMI value displayed as a card next to the toggle when height is set, so I always know my latest BMI at a glance.
+- **US-146** As a user, when height is not set I see a hint linking to the Add Entry screen so that I know how to enable BMI tracking.
+- **US-147** As a user, toggling BMI off reverts the chart to showing only the weight line so that I can focus on weight trends without distraction.

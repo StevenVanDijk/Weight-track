@@ -145,6 +145,75 @@ describe('ChartComponent', () => {
     });
   });
 
+  // ─── BMI ────────────────────────────────────────────────────────────────
+
+  describe('BMI', () => {
+    it('showBmi defaults to false', () => {
+      expect((component as any).showBmi()).toBe(false);
+    });
+
+    it('toggleBmi flips showBmi', () => {
+      (component as any).toggleBmi();
+      expect((component as any).showBmi()).toBe(true);
+      (component as any).toggleBmi();
+      expect((component as any).showBmi()).toBe(false);
+    });
+
+    it('heightM is null when no height is set', () => {
+      expect((component as any).heightM()).toBeNull();
+    });
+
+    it('heightM converts cm to metres when height is set', () => {
+      weightService.updateSettings({ height: 175 });
+      fixture.detectChanges();
+      expect((component as any).heightM()).toBeCloseTo(1.75, 5);
+    });
+
+    it('computeBmi returns correct value', () => {
+      // 80 kg / (1.75m)^2 = 80 / 3.0625 ≈ 26.12
+      const bmi = (component as any).computeBmi(80, 1.75);
+      expect(bmi).toBeCloseTo(26.12, 1);
+    });
+
+    it('currentBmi is null when height is not set', () => {
+      weightService.addEntry({ date: '2024-01-01', weight: 80 });
+      fixture.detectChanges();
+      expect((component as any).currentBmi()).toBeNull();
+    });
+
+    it('currentBmi is null when there are no entries', () => {
+      weightService.updateSettings({ height: 175 });
+      fixture.detectChanges();
+      expect((component as any).currentBmi()).toBeNull();
+    });
+
+    it('currentBmi returns rounded BMI when height and entries are present', () => {
+      weightService.updateSettings({ height: 175 });
+      weightService.addEntry({ date: '2024-01-01', weight: 80 });
+      fixture.detectChanges();
+      const bmi = (component as any).currentBmi();
+      expect(bmi).not.toBeNull();
+      expect(bmi).toBeCloseTo(26.1, 1);
+    });
+
+    it('drawChart does not throw when showBmi is true and height is set', () => {
+      weightService.updateSettings({ height: 175 });
+      for (let i = 1; i <= 5; i++) {
+        weightService.addEntry({ date: `2024-01-0${i}`, weight: 80 - i });
+      }
+      (component as any).showBmi.set(true);
+      expect(() => (component as any).drawChart()).not.toThrow();
+    });
+
+    it('drawChart does not throw when showBmi is true but height is not set', () => {
+      for (let i = 1; i <= 3; i++) {
+        weightService.addEntry({ date: `2024-01-0${i}`, weight: 80 - i });
+      }
+      (component as any).showBmi.set(true);
+      expect(() => (component as any).drawChart()).not.toThrow();
+    });
+  });
+
   // ─── trendLine signal ───────────────────────────────────────────────────
 
   describe('trendLine', () => {
