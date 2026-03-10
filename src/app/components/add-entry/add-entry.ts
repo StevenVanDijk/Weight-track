@@ -23,6 +23,7 @@ class AddEntryComponent {
   protected saved = signal(false);
   protected error = signal('');
   protected goalWeight = signal<number | null>(this.weightService.settings().goalWeight);
+  protected height = signal<number | null>(this.weightService.settings().height);
 
   /** Weight of the most recent stored entry, or null if none. */
   protected readonly lastWeight = computed<number | null>(() => {
@@ -54,6 +55,9 @@ class AddEntryComponent {
   get goalWeightInput(): number | null { return this.goalWeight(); }
   set goalWeightInput(v: number | null) { this.goalWeight.set(v); }
 
+  get heightInput(): number | null { return this.height(); }
+  set heightInput(v: number | null) { this.height.set(v); }
+
   protected submit(): void {
     const w = this.weight();
     if (!w || w <= 0 || w > 500) {
@@ -68,8 +72,9 @@ class AddEntryComponent {
       note: this.note().trim() || undefined,
     });
 
-    if (this.goalWeight() !== this.weightService.settings().goalWeight) {
-      this.weightService.updateSettings({ goalWeight: this.goalWeight() });
+    const settings = this.weightService.settings();
+    if (this.goalWeight() !== settings.goalWeight || this.height() !== settings.height) {
+      this.weightService.updateSettings({ goalWeight: this.goalWeight(), height: this.height() });
     }
 
     this.gam.onEntryAdded();

@@ -61,6 +61,21 @@
       />
     </div>
 
+    <!-- Height -->
+    <div class="form-group">
+      <label for="height">Height in cm (optional, enables BMI chart)</label>
+      <input
+        id="height"
+        type="number"
+        [(ngModel)]="heightInput"
+        name="height"
+        step="1"
+        min="50"
+        max="300"
+        placeholder="e.g. 175"
+      />
+    </div>
+
     <!-- Goal Weight -->
     <div class="form-group">
       <label for="goal">Goal Weight in kg (optional)</label>

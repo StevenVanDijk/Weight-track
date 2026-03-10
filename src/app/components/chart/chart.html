@@ -22,6 +22,31 @@
     <canvas #canvas class="weight-canvas"></canvas>
   </div>
 
+  <!-- BMI toggle + current BMI -->
+  @if (heightM() !== null) {
+    <div class="bmi-row">
+      <button
+        class="bmi-toggle-btn"
+        [class.active]="showBmi()"
+        (click)="toggleBmi()"
+      >
+        <span class="bmi-dot"></span>
+        {{ showBmi() ? 'Hide BMI' : 'Show BMI' }}
+      </button>
+      @if (currentBmi() !== null) {
+        <div class="current-bmi card">
+          <div class="bmi-value">{{ currentBmi() | number:'1.1-1' }}</div>
+          <div class="bmi-label">Current BMI</div>
+        </div>
+      }
+    </div>
+  } @else {
+    <div class="bmi-hint">
+      <span class="material-icons">info</span>
+      <span>Set your height in <a routerLink="/add">Add Entry</a> to enable the BMI chart.</span>
+    </div>
+  }
+
   <!-- Days left to goal -->
   @if (daysLeft() !== null) {
     <div class="days-left-card card">
