@@ -1,6 +1,6 @@
 # WeightTrack
 
-A Progressive Web App for personal weight tracking built with Angular 19.
+A Progressive Web App for personal weight tracking built with Angular 21.
 
 ## Development Commands
 
