@@ -1,6 +1,6 @@
 # WeightTrack
 
-A Progressive Web App for personal weight tracking built with Angular 19.
+A Progressive Web App for personal weight tracking built with Angular 21.
 
 ## Development Commands
 
@@ -50,6 +50,8 @@ All routes are **lazy-loaded**. Routes: `/dashboard`, `/add`, `/chart`, `/histor
 2. New or updated user stories in `spec.md`
 
 No feature, behaviour change, or new component is considered complete without both.
+
+**After every successful change, create a pull request** targeting `main` using `gh pr create`. Include a short summary of what changed and why.
 
 ## Adding an Achievement
 
