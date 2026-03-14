@@ -1,5 +1,6 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
 import { WeightEntry } from '../models/weight-entry';
+import { DbService } from '../db';
 
 export type GoogleFitStatus = 'idle' | 'connecting' | 'syncing' | 'success' | 'error';
 
@@ -15,12 +16,18 @@ export interface GoogleFitSettings {
   lastSyncDate: string | null;
   /** IDs of WeightEntry records already written to Google Fit — prevents duplicate writes. */
   syncedEntryIds: string[];
+  /** Persisted OAuth access token. Null when disconnected or cleared by disconnect(). */
+  accessToken: string | null;
+  /** Unix timestamp in ms after which accessToken is considered expired. */
+  tokenExpiry: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
 export class GoogleFitService {
+  private readonly db = inject(DbService);
   private _settings = signal<GoogleFitSettings>(this.loadSettings());
-  private _accessToken = signal<string | null>(null);
+  // Restore persisted token on startup if it has not yet expired.
+  private _accessToken = signal<string | null>(this.getValidStoredToken());
   private _status = signal<GoogleFitStatus>('idle');
   private _message = signal<string>('');
   private _importedCount = signal<number>(0);
@@ -48,6 +55,13 @@ export class GoogleFitService {
   }
 
   async connect(): Promise<void> {
+    // If already connected with a valid token, nothing to do.
+    if (this._accessToken()) {
+      this._status.set('idle');
+      this._message.set('Already connected to Google Fit.');
+      return;
+    }
+
     const clientId = this._settings().clientId;
     if (!clientId) {
       this._status.set('error');
@@ -68,13 +82,13 @@ export class GoogleFitService {
         this.startRedirectFlow(clientId);
         // Execution stops here; the browser navigates to Google.
       } else {
-        const token = await this.requestTokenViaPopup(clientId);
-        this._accessToken.set(token);
+        const { token, expiresIn } = await this.requestTokenViaPopup(clientId);
+        this.persistToken(token, expiresIn);
         this._status.set('idle');
         this._message.set('Connected to Google Fit.');
       }
     } catch (err: unknown) {
-      this._accessToken.set(null);
+      this.clearToken();
       this._status.set('error');
       this._message.set(err instanceof Error ? err.message : 'Sign-in failed.');
     }
@@ -112,13 +126,12 @@ export class GoogleFitService {
     const clientId = this._settings().clientId;
     if (!clientId) return;
 
-    // Parse the access token directly from the hash fragment (OAuth 2.0 implicit flow).
-    // This avoids relying on the GIS library to call a callback, which can fail when
-    // the app is resumed from background (e.g. Android Custom Tab redirect back to PWA).
+    // Parse the access token and expiry directly from the hash fragment (OAuth 2.0 implicit flow).
     const params = new URLSearchParams(hash.substring(1)); // strip leading '#'
     const token = params.get('access_token');
+    const expiresIn = Number(params.get('expires_in') ?? '3599');
     if (token) {
-      this._accessToken.set(token);
+      this.persistToken(token, expiresIn);
       this._status.set('idle');
       this._message.set('Connected to Google Fit.');
       // Remove the fragment so a page refresh doesn't re-process it.
@@ -131,7 +144,7 @@ export class GoogleFitService {
     if (token && (window as any).google?.accounts?.oauth2) {
       (window as any).google.accounts.oauth2.revoke(token, () => {});
     }
-    this._accessToken.set(null);
+    this.clearToken();
     this._status.set('idle');
     this._message.set('Disconnected from Google Fit.');
   }
@@ -155,9 +168,19 @@ export class GoogleFitService {
       const endNs = String(endMs * 1_000_000);
 
       const url = `${FITNESS_API}/dataSources/${MERGED_SOURCE}/datasets/${startNs}-${endNs}`;
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
+      // If the token expired mid-session, attempt a silent refresh and retry once.
+      if (res.status === 401) {
+        const refreshed = await this.tryRefreshToken();
+        if (refreshed) {
+          res = await fetch(url, {
+            headers: { Authorization: `Bearer ${this._accessToken()!}` },
+          });
+        }
+      }
 
       if (!res.ok) {
         const body = await res.text();
@@ -316,9 +339,79 @@ export class GoogleFitService {
     }
   }
 
+  /**
+   * Called by APP_INITIALIZER. Restores Google Fit settings (including any
+   * persisted token) from IndexedDB if localStorage was cleared.
+   */
+  async restoreFromDb(): Promise<void> {
+    if (localStorage.getItem(SETTINGS_KEY)) return;
+    const raw = await this.db.read(SETTINGS_KEY);
+    if (raw && typeof raw === 'object') {
+      const s = raw as GoogleFitSettings;
+      const restored: GoogleFitSettings = {
+        clientId: s.clientId ?? '',
+        lastSyncDate: s.lastSyncDate ?? null,
+        syncedEntryIds: Array.isArray(s.syncedEntryIds) ? s.syncedEntryIds : [],
+        accessToken: s.accessToken ?? null,
+        tokenExpiry: s.tokenExpiry ?? null,
+      };
+      this._settings.set(restored);
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(restored));
+      // Restore token signal if the recovered token is still valid.
+      const valid = this.getValidStoredToken();
+      if (valid) this._accessToken.set(valid);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /** Returns the stored token if it has not expired yet, otherwise null. */
+  private getValidStoredToken(): string | null {
+    const s = this._settings();
+    if (s.accessToken && s.tokenExpiry && Date.now() < s.tokenExpiry) {
+      return s.accessToken;
+    }
+    return null;
+  }
+
+  /**
+   * Persists the token and its expiry in settings (localStorage + IndexedDB).
+   * Subtracts a 60-second safety buffer from expiresIn.
+   */
+  private persistToken(token: string, expiresIn: number): void {
+    const expiry = Date.now() + Math.max(0, expiresIn - 60) * 1000;
+    this._settings.set({ ...this._settings(), accessToken: token, tokenExpiry: expiry });
+    this._accessToken.set(token);
+    this.saveSettings();
+  }
+
+  /** Clears the token from the signal and from persisted settings. */
+  private clearToken(): void {
+    this._settings.set({ ...this._settings(), accessToken: null, tokenExpiry: null });
+    this._accessToken.set(null);
+    this.saveSettings();
+  }
+
+  /**
+   * Attempts a silent token refresh via GIS popup with prompt=''.
+   * Only available when not in standalone PWA mode (popup is usable).
+   * Returns true if a new token was obtained.
+   */
+  private async tryRefreshToken(): Promise<boolean> {
+    const clientId = this._settings().clientId;
+    if (!clientId || this.isStandalonePwa()) return false;
+    try {
+      await this.loadGsiScript();
+      const { token, expiresIn } = await this.requestTokenViaPopup(clientId);
+      this.persistToken(token, expiresIn);
+      return true;
+    } catch {
+      this.clearToken();
+      return false;
+    }
+  }
 
   /** Loads the Google Identity Services script if not already present. */
   private loadGsiScript(): Promise<void> {
@@ -348,8 +441,8 @@ export class GoogleFitService {
     );
   }
 
-  /** Popup flow (browser): opens the Google sign-in popup and resolves with the token. */
-  private requestTokenViaPopup(clientId: string): Promise<string> {
+  /** Popup flow (browser): opens the Google sign-in popup and resolves with the token and its expiry. */
+  private requestTokenViaPopup(clientId: string): Promise<{ token: string; expiresIn: number }> {
     return new Promise((resolve, reject) => {
       const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: clientId,
@@ -358,7 +451,10 @@ export class GoogleFitService {
           if (resp.error) {
             reject(new Error(`OAuth error: ${resp.error_description ?? resp.error}`));
           } else {
-            resolve(resp.access_token as string);
+            resolve({
+              token: resp.access_token as string,
+              expiresIn: Number(resp.expires_in ?? 3599),
+            });
           }
         },
         error_callback: (err: any) => {
@@ -430,13 +526,16 @@ export class GoogleFitService {
         clientId: parsed.clientId ?? '',
         lastSyncDate: parsed.lastSyncDate ?? null,
         syncedEntryIds: Array.isArray(parsed.syncedEntryIds) ? parsed.syncedEntryIds : [],
+        accessToken: parsed.accessToken ?? null,
+        tokenExpiry: parsed.tokenExpiry ?? null,
       };
     } catch {
-      return { clientId: '', lastSyncDate: null, syncedEntryIds: [] };
+      return { clientId: '', lastSyncDate: null, syncedEntryIds: [], accessToken: null, tokenExpiry: null };
     }
   }
 
   private saveSettings(): void {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(this._settings()));
+    this.db.write(SETTINGS_KEY, this._settings()).catch(() => {});
   }
 }

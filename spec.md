@@ -283,10 +283,16 @@
 - **US-154** As a user, after a successful sign-in the Sync page shows a green "Connected" indicator so that I can confirm the connection.
 - **US-155** As a user, I can tap "Disconnect" to revoke the access token and return to the disconnected state so that I can end the session.
 - **US-156** As a user, if authentication fails I see an error message explaining what went wrong so that I can take corrective action.
-- **US-157** As a user, the access token is stored only in memory (not localStorage) so that it is not persisted beyond the current session.
+- **US-157** As a user, after a successful sign-in the access token and its expiry time are persisted in `localStorage` (and backed up to IndexedDB) so that the connection survives a page reload without requiring me to sign in again.
 - **US-172** As a user, if Google redirects back to the app with an `access_denied` error (in the URL hash or query string), I see an error message telling me to add my account as a test user in Google Cloud Console so that I know what corrective action to take.
 - **US-173** As a user, if Google redirects back with any other OAuth error code, I see an error message containing the code so that I can diagnose the problem.
 - **US-174** As a user, I see a warning note in the Setup card explaining that if sign-in is blocked, I need to add my Google account as a test user in the Google Cloud Console OAuth consent screen.
+- **US-178** As a user, when the app starts and a valid non-expired access token is found in storage, I am immediately shown as connected without needing to sign in again.
+- **US-179** As a user, an expired stored token is automatically discarded on startup so that stale credentials are never used.
+- **US-180** As a user, tapping "Connect" when already authenticated with a valid token is a no-op so that I am not prompted to sign in unnecessarily.
+- **US-181** As a user, when a sync operation receives a 401 Unauthorized response, the app attempts a silent token refresh and retries the operation once so that transient expiry during an active session is handled transparently (browser mode only; standalone PWA falls back to manual reconnect).
+- **US-182** As a user, tapping "Disconnect" removes the persisted token from storage so that the next app start begins in a disconnected state.
+- **US-183** As a user, the Google Fit settings (including any persisted token) are backed up to IndexedDB and restored from there if localStorage is cleared, consistent with all other durable app state.
 
 ### 13.3 Import from Google Fit
 - **US-158** As a user, I can tap "Import" to pull the last 12 months of weight entries from Google Fit into the app.

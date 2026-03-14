@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { GoogleFitService } from './google-fit';
 import { WeightEntry } from '../models/weight-entry';
+import { DbService } from '../db';
 
 // Helper: nanosecond timestamp string from an ISO date string
 function dateToNs(date: string): string {
@@ -33,6 +34,35 @@ describe('GoogleFitService', () => {
     expect(service.isConnected()).toBe(false);
     expect(service.status()).toBe('idle');
     expect(service.message()).toBe('');
+  });
+
+  it('restores a valid token from localStorage on construction', () => {
+    localStorage.setItem('weight_google_fit', JSON.stringify({
+      clientId: 'test-client',
+      lastSyncDate: null,
+      syncedEntryIds: [],
+      accessToken: 'saved-token',
+      tokenExpiry: Date.now() + 3_600_000,
+    }));
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({});
+    const fresh = TestBed.inject(GoogleFitService);
+    expect(fresh.isConnected()).toBe(true);
+    expect(fresh.settings().accessToken).toBe('saved-token');
+  });
+
+  it('does not restore an expired token from localStorage', () => {
+    localStorage.setItem('weight_google_fit', JSON.stringify({
+      clientId: 'test-client',
+      lastSyncDate: null,
+      syncedEntryIds: [],
+      accessToken: 'old-token',
+      tokenExpiry: Date.now() - 1000,
+    }));
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({});
+    const fresh = TestBed.inject(GoogleFitService);
+    expect(fresh.isConnected()).toBe(false);
   });
 
   it('loads an empty client ID when no settings are stored', () => {
@@ -71,6 +101,26 @@ describe('GoogleFitService', () => {
     expect(service.isConnected()).toBe(false);
     expect(service.status()).toBe('idle');
     expect(service.message()).toContain('Disconnected');
+  });
+
+  it('disconnect removes the persisted token from localStorage', () => {
+    (service as any).persistToken('my-token', 3600);
+    expect(service.isConnected()).toBe(true);
+    service.disconnect();
+    const raw = JSON.parse(localStorage.getItem('weight_google_fit')!);
+    expect(raw.accessToken).toBeNull();
+    expect(raw.tokenExpiry).toBeNull();
+    expect(service.isConnected()).toBe(false);
+  });
+
+  it('connect is a no-op when already connected with a valid token', async () => {
+    (service as any).persistToken('valid-token', 3600);
+    const loadGsiSpy = vi.spyOn(service as any, 'loadGsiScript');
+    await service.connect();
+    expect(loadGsiSpy).not.toHaveBeenCalled();
+    expect(service.isConnected()).toBe(true);
+    expect(service.status()).toBe('idle');
+    expect(service.message()).toContain('Already connected');
   });
 
   // ---------------------------------------------------------------------------
@@ -124,6 +174,30 @@ describe('GoogleFitService', () => {
     expect(service.status()).toBe('idle');
     expect(service.message()).toContain('Connected');
     expect(history.replaceState).toHaveBeenCalledWith(null, '', '/sync');
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '' },
+      configurable: true,
+    });
+  });
+
+  it('handleRedirectCallback persists token and expiry to localStorage', async () => {
+    service.setClientId('test-client-id.apps.googleusercontent.com');
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        hash: '#access_token=ya29.redirect-token&token_type=Bearer&expires_in=3600',
+        pathname: '/sync',
+      },
+      configurable: true,
+    });
+    vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+
+    await service.handleRedirectCallback();
+
+    const raw = JSON.parse(localStorage.getItem('weight_google_fit')!);
+    expect(raw.accessToken).toBe('ya29.redirect-token');
+    expect(raw.tokenExpiry).toBeGreaterThan(Date.now());
 
     Object.defineProperty(window, 'location', {
       value: { ...window.location, hash: '' },
@@ -296,12 +370,43 @@ describe('GoogleFitService', () => {
       window.fetch = vi.fn().mockResolvedValue(
         new Response('Unauthorized', { status: 401 })
       );
+      // Ensure tryRefreshToken fails immediately (no clientId configured)
+      vi.spyOn(service as any, 'tryRefreshToken').mockResolvedValue(false);
 
       const count = await service.importFromGoogleFit(vi.fn());
 
       expect(count).toBe(0);
       expect(service.status()).toBe('error');
       expect(service.message()).toContain('401');
+    });
+
+    it('retries import after a successful silent token refresh on 401', async () => {
+      let callCount = 0;
+      window.fetch = vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve(new Response('Unauthorized', { status: 401 }));
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              point: [{ startTimeNanos: dateToNs('2024-03-01'), value: [{ fpVal: 80.0 }] }],
+            }),
+            { status: 200 }
+          )
+        );
+      });
+      vi.spyOn(service as any, 'tryRefreshToken').mockImplementation(async () => {
+        (service as any)._accessToken.set('new-token');
+        return true;
+      });
+
+      const addEntry = vi.fn();
+      const count = await service.importFromGoogleFit(addEntry);
+
+      expect(count).toBe(1);
+      expect(service.status()).toBe('success');
+      expect(callCount).toBe(2);
     });
 
     it('sets error status when fetch rejects (network error)', async () => {
@@ -445,6 +550,95 @@ describe('GoogleFitService', () => {
     const fresh = TestBed.inject(GoogleFitService);
     expect(fresh.settings().clientId).toBe('saved-id');
     expect(fresh.settings().lastSyncDate).toBe('2024-01-01T00:00:00.000Z');
+  });
+
+  // ---------------------------------------------------------------------------
+  // restoreFromDb
+  // ---------------------------------------------------------------------------
+
+  describe('restoreFromDb', () => {
+    it('does nothing when localStorage already has settings', async () => {
+      const dbService = TestBed.inject(DbService);
+      const readSpy = vi.spyOn(dbService, 'read').mockResolvedValue({
+        clientId: 'idb-client',
+        lastSyncDate: null,
+        syncedEntryIds: [],
+        accessToken: 'idb-token',
+        tokenExpiry: Date.now() + 3_600_000,
+      });
+      // Put something in localStorage so restoreFromDb short-circuits
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: 'ls-client', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: null, tokenExpiry: null,
+      }));
+
+      await service.restoreFromDb();
+
+      // IndexedDB should not be queried because localStorage is present
+      expect(readSpy).not.toHaveBeenCalled();
+      // The in-memory signal is unchanged (was initialised from empty localStorage before this test set it)
+      expect(service.settings().clientId).toBe('');
+    });
+
+    it('restores settings from IndexedDB when localStorage is empty', async () => {
+      const dbService = TestBed.inject(DbService);
+      vi.spyOn(dbService, 'read').mockResolvedValue({
+        clientId: 'idb-client',
+        lastSyncDate: '2024-01-01T00:00:00.000Z',
+        syncedEntryIds: ['e1'],
+        accessToken: null,
+        tokenExpiry: null,
+      });
+
+      // localStorage is already empty from beforeEach
+      await service.restoreFromDb();
+
+      expect(service.settings().clientId).toBe('idb-client');
+      expect(service.settings().lastSyncDate).toBe('2024-01-01T00:00:00.000Z');
+      expect(service.settings().syncedEntryIds).toEqual(['e1']);
+      expect(localStorage.getItem('weight_google_fit')).not.toBeNull();
+    });
+
+    it('restores a valid token from IndexedDB and sets connected state', async () => {
+      const dbService = TestBed.inject(DbService);
+      vi.spyOn(dbService, 'read').mockResolvedValue({
+        clientId: 'idb-client',
+        lastSyncDate: null,
+        syncedEntryIds: [],
+        accessToken: 'idb-token',
+        tokenExpiry: Date.now() + 3_600_000,
+      });
+
+      await service.restoreFromDb();
+
+      expect(service.isConnected()).toBe(true);
+      expect(service.settings().accessToken).toBe('idb-token');
+    });
+
+    it('does not restore an expired token recovered from IndexedDB', async () => {
+      const dbService = TestBed.inject(DbService);
+      vi.spyOn(dbService, 'read').mockResolvedValue({
+        clientId: 'idb-client',
+        lastSyncDate: null,
+        syncedEntryIds: [],
+        accessToken: 'expired-token',
+        tokenExpiry: Date.now() - 1000,
+      });
+
+      await service.restoreFromDb();
+
+      expect(service.isConnected()).toBe(false);
+    });
+
+    it('does nothing when IndexedDB returns undefined', async () => {
+      const dbService = TestBed.inject(DbService);
+      vi.spyOn(dbService, 'read').mockResolvedValue(undefined);
+
+      await service.restoreFromDb();
+
+      expect(service.settings().clientId).toBe('');
+      expect(service.isConnected()).toBe(false);
+    });
   });
 
   it('falls back to defaults when localStorage contains invalid JSON', () => {
