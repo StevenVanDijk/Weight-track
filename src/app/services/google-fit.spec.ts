@@ -106,6 +106,40 @@ describe('GoogleFitService', () => {
     });
   });
 
+  it('handleRedirectCallback parses access_token from hash and sets connected state', async () => {
+    service.setClientId('test-client-id.apps.googleusercontent.com');
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        hash: '#access_token=ya29.test-token&token_type=Bearer&expires_in=3599',
+        pathname: '/sync',
+      },
+      configurable: true,
+    });
+    vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+
+    await service.handleRedirectCallback();
+
+    expect(service.isConnected()).toBe(true);
+    expect(service.status()).toBe('idle');
+    expect(service.message()).toContain('Connected');
+    expect(history.replaceState).toHaveBeenCalledWith(null, '', '/sync');
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '' },
+      configurable: true,
+    });
+  });
+
+  it('handleRedirectCallback is idempotent — does not reconnect when hash has no token', async () => {
+    service.setClientId('test-client-id.apps.googleusercontent.com');
+    // No hash fragment — should do nothing even if called multiple times
+    await service.handleRedirectCallback();
+    await service.handleRedirectCallback();
+    expect(service.isConnected()).toBe(false);
+    expect(service.status()).toBe('idle');
+  });
+
   it('handleRedirectCallback sets error status for access_denied in URL hash', async () => {
     Object.defineProperty(window, 'location', {
       value: { ...window.location, hash: '#error=access_denied', search: '', pathname: '/sync' },
