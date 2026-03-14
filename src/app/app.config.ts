@@ -5,6 +5,7 @@ import { routes } from './app.routes';
 import { provideServiceWorker } from '@angular/service-worker';
 import { WeightService } from './services/weight';
 import { GamificationService } from './services/gamification';
+import { GoogleFitService } from './services/google-fit';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -16,15 +17,15 @@ export const appConfig: ApplicationConfig = {
     }),
     {
       provide: APP_INITIALIZER,
-      useFactory: (weight: WeightService, gam: GamificationService) => async () => {
+      useFactory: (weight: WeightService, gam: GamificationService, gfit: GoogleFitService) => async () => {
         // Request persistent storage so the browser won't evict this origin's data
         if ('storage' in navigator && 'persist' in navigator.storage) {
           navigator.storage.persist();
         }
         // Restore from IndexedDB if localStorage was cleared
-        await Promise.all([weight.restoreFromDb(), gam.restoreFromDb()]);
+        await Promise.all([weight.restoreFromDb(), gam.restoreFromDb(), gfit.restoreFromDb()]);
       },
-      deps: [WeightService, GamificationService],
+      deps: [WeightService, GamificationService, GoogleFitService],
       multi: true,
     },
   ],
