@@ -110,38 +110,17 @@ export class GoogleFitService {
     const clientId = this._settings().clientId;
     if (!clientId) return;
 
-    try {
-      await this.loadGsiScript();
-      await new Promise<void>((resolve) => {
-        // Registering the token client causes GIS to inspect the URL fragment.
-        // If a valid token response is present GIS calls the callback immediately.
-        (window as any).google.accounts.oauth2.initTokenClient({
-          client_id: clientId,
-          scope: SCOPES,
-          ux_mode: 'redirect',
-          redirect_uri: this.redirectUri,
-          callback: (resp: any) => {
-            if (resp.error) {
-              const isAccessDenied = resp.error === 'access_denied';
-              this._status.set('error');
-              this._message.set(
-                isAccessDenied
-                  ? 'Google sign-in was blocked (access_denied). Add your Google account as a test user in the OAuth consent screen of your Google Cloud Console project.'
-                  : `Google sign-in failed: ${resp.error_description ?? resp.error}`
-              );
-            } else {
-              this._accessToken.set(resp.access_token as string);
-              this._status.set('idle');
-              this._message.set('Connected to Google Fit.');
-              // Remove the fragment so a page refresh doesn't re-process it.
-              history.replaceState(null, '', window.location.pathname);
-            }
-            resolve();
-          },
-        });
-      });
-    } catch {
-      // Silently ignore — not a redirect return or GIS unavailable.
+    // Parse the access token directly from the hash fragment (OAuth 2.0 implicit flow).
+    // This avoids relying on the GIS library to call a callback, which can fail when
+    // the app is resumed from background (e.g. Android Custom Tab redirect back to PWA).
+    const params = new URLSearchParams(hash.substring(1)); // strip leading '#'
+    const token = params.get('access_token');
+    if (token) {
+      this._accessToken.set(token);
+      this._status.set('idle');
+      this._message.set('Connected to Google Fit.');
+      // Remove the fragment so a page refresh doesn't re-process it.
+      history.replaceState(null, '', window.location.pathname);
     }
   }
 

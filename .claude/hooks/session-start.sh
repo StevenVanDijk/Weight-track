@@ -23,3 +23,11 @@ fi
 echo "Installing npm dependencies..."
 cd "$REPO_DIR"
 npm install
+
+# Authenticate gh CLI if a GitHub token is available.
+# Set GH_TOKEN in your project's environment secrets (Claude Code on the web)
+# or export it before starting a session.
+if [ -n "${GH_TOKEN:-}" ]; then
+  echo "Configuring gh CLI with GH_TOKEN..."
+  echo "$GH_TOKEN" | gh auth login --with-token
+fi

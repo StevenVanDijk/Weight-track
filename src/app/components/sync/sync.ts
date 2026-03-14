@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { WeightService } from '../../services/weight';
 import { GoogleFitService } from '../../services/google-fit';
@@ -22,6 +22,20 @@ class SyncComponent {
     this.clientIdInput.set(this.gfit.settings().clientId);
     // If returning from the OAuth redirect flow (standalone PWA), pick up the token.
     this.gfit.handleRedirectCallback();
+
+    // On Android PWA, the OAuth redirect opens in a Chrome Custom Tab while the
+    // app stays alive in the background. When the user returns, the app becomes
+    // visible again but Angular does not re-run the constructor. Re-check for the
+    // OAuth callback token whenever the page becomes visible.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        this.gfit.handleRedirectCallback();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    inject(DestroyRef).onDestroy(() => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    });
   }
 
   protected saveClientId(): void {
