@@ -17,6 +17,12 @@
       under <strong>Authorised JavaScript origins</strong> (browser) and
       <strong>Authorised redirect URIs</strong> (installed PWA on mobile):
     </p>
+    <p class="help-text help-text--warning">
+      <span class="material-icons" style="font-size:1rem;vertical-align:middle;margin-right:4px">warning</span>
+      If you see <strong>"Access blocked"</strong> during sign-in, your OAuth app is in Testing mode.
+      Go to <strong>Google Cloud Console → APIs &amp; Services → OAuth consent screen → Test users</strong>
+      and add the Google account you want to sign in with.
+    </p>
     <div class="uri-block">
       <code class="uri-value">{{ gfit.redirectUri }}</code>
     </div>

@@ -106,6 +106,64 @@ describe('GoogleFitService', () => {
     });
   });
 
+  it('handleRedirectCallback sets error status for access_denied in URL hash', async () => {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '#error=access_denied', search: '', pathname: '/sync' },
+      configurable: true,
+    });
+    vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+
+    await service.handleRedirectCallback();
+
+    expect(service.status()).toBe('error');
+    expect(service.message()).toContain('access_denied');
+    expect(service.message()).toContain('test user');
+    expect(service.isConnected()).toBe(false);
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '', search: '' },
+      configurable: true,
+    });
+  });
+
+  it('handleRedirectCallback sets error status for access_denied in URL query string', async () => {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '', search: '?error=access_denied', pathname: '/sync' },
+      configurable: true,
+    });
+    vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+
+    await service.handleRedirectCallback();
+
+    expect(service.status()).toBe('error');
+    expect(service.message()).toContain('access_denied');
+    expect(service.message()).toContain('test user');
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '', search: '' },
+      configurable: true,
+    });
+  });
+
+  it('handleRedirectCallback sets a generic error message for non-access_denied errors', async () => {
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '#error=server_error', search: '', pathname: '/sync' },
+      configurable: true,
+    });
+    vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+
+    await service.handleRedirectCallback();
+
+    expect(service.status()).toBe('error');
+    expect(service.message()).toContain('server_error');
+    expect(service.message()).not.toContain('test user');
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '', search: '' },
+      configurable: true,
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // importFromGoogleFit — not connected
   // ---------------------------------------------------------------------------

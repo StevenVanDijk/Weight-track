@@ -60,6 +60,16 @@
   }
 
   strong { color: var(--text); }
+
+  &--warning {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: var(--radius-sm);
+    color: #fcd34d;
+    padding: 10px 12px;
+
+    strong { color: #fde68a; }
+  }
 }
 
 .uri-block {

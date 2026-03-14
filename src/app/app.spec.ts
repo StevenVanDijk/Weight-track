@@ -24,9 +24,9 @@ describe('App (root component)', () => {
     expect(fixture.componentInstance.title).toBe('WeightTrack');
   });
 
-  it('navItems contains 5 entries', () => {
+  it('navItems contains 6 entries', () => {
     const fixture = TestBed.createComponent(App);
-    expect(fixture.componentInstance.navItems.length).toBe(5);
+    expect(fixture.componentInstance.navItems.length).toBe(6);
   });
 
   it('navItems includes all expected routes', () => {
@@ -37,14 +37,15 @@ describe('App (root component)', () => {
     expect(paths).toContain('/chart');
     expect(paths).toContain('/history');
     expect(paths).toContain('/achievements');
+    expect(paths).toContain('/sync');
   });
 
-  it('renders bottom nav with 5 items', async () => {
+  it('renders bottom nav with 6 items', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await fixture.whenStable();
     const navItems = fixture.nativeElement.querySelectorAll('.nav-item');
-    expect(navItems.length).toBe(5);
+    expect(navItems.length).toBe(6);
   });
 
   it('renders the app-achievement-toast element', async () => {
