@@ -13,6 +13,8 @@ const SCOPES = 'https://www.googleapis.com/auth/fitness.body.read https://www.go
 export interface GoogleFitSettings {
   clientId: string;
   lastSyncDate: string | null;
+  /** IDs of WeightEntry records already written to Google Fit — prevents duplicate writes. */
+  syncedEntryIds: string[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -195,6 +197,55 @@ export class GoogleFitService {
   }
 
   /**
+   * Syncs a single entry to Google Fit if connected and not already synced.
+   * Designed for fire-and-forget use immediately after logging a new weight.
+   * Silently no-ops when disconnected or when the entry has already been pushed.
+   */
+  async syncEntry(entry: WeightEntry): Promise<void> {
+    const token = this._accessToken();
+    if (!token) return;
+
+    const settings = this._settings();
+    if (settings.syncedEntryIds.includes(entry.id)) return;
+
+    try {
+      const dataSourceId = await this.ensureDataSource(token);
+      const ms = new Date(entry.date).getTime();
+      const ns = String(ms * 1_000_000);
+
+      const patchRes = await fetch(
+        `${FITNESS_API}/dataSources/${encodeURIComponent(dataSourceId)}/datasets/${ns}-${ns}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            dataSourceId,
+            minStartTimeNs: ns,
+            maxEndTimeNs: ns,
+            point: [{
+              dataTypeName: 'com.google.weight',
+              startTimeNanos: ns,
+              endTimeNanos: ns,
+              value: [{ fpVal: entry.weight }],
+            }],
+          }),
+        }
+      );
+
+      if (!patchRes.ok) return; // silent failure — user can manually export later
+
+      const updatedIds = [...this._settings().syncedEntryIds, entry.id];
+      this._settings.set({ ...this._settings(), syncedEntryIds: updatedIds });
+      this.saveSettings();
+    } catch {
+      // Silent failure for background auto-sync
+    }
+  }
+
+  /**
    * Push all local weight entries to Google Fit.
    * Creates a custom data source on first run, then patches the dataset.
    * Returns the number of entries exported.
@@ -249,7 +300,8 @@ export class GoogleFitService {
       }
 
       const synced = new Date().toISOString();
-      this._settings.set({ ...this._settings(), lastSyncDate: synced });
+      const allIds = entries.map(e => e.id);
+      this._settings.set({ ...this._settings(), lastSyncDate: synced, syncedEntryIds: allIds });
       this.saveSettings();
 
       const count = entries.length;
@@ -373,9 +425,14 @@ export class GoogleFitService {
   private loadSettings(): GoogleFitSettings {
     try {
       const raw = localStorage.getItem(SETTINGS_KEY);
-      return raw ? JSON.parse(raw) : { clientId: '', lastSyncDate: null };
+      const parsed = raw ? JSON.parse(raw) : {};
+      return {
+        clientId: parsed.clientId ?? '',
+        lastSyncDate: parsed.lastSyncDate ?? null,
+        syncedEntryIds: Array.isArray(parsed.syncedEntryIds) ? parsed.syncedEntryIds : [],
+      };
     } catch {
-      return { clientId: '', lastSyncDate: null };
+      return { clientId: '', lastSyncDate: null, syncedEntryIds: [] };
     }
   }
 

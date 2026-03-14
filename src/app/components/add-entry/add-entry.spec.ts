@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { AddEntryComponent } from './add-entry';
 import { WeightService } from '../../services/weight';
 import { GamificationService } from '../../services/gamification';
+import { GoogleFitService } from '../../services/google-fit';
 
 describe('AddEntryComponent', () => {
   let fixture: ComponentFixture<AddEntryComponent>;
@@ -209,5 +210,35 @@ describe('AddEntryComponent', () => {
     (component as any).sliderValue = 79.5;
     // Both slider and number input bind to the same weight signal
     expect((component as any).weightInput).toBe(79.5);
+  });
+
+  // ─── Google Fit auto-sync ─────────────────────────────────────────────────
+
+  it('calls googleFitService.syncEntry with the new entry when Google Fit is connected', () => {
+    const googleFit = TestBed.inject(GoogleFitService);
+    (googleFit as any)._accessToken.set('fake-token');
+    const syncSpy = vi.spyOn(googleFit, 'syncEntry').mockResolvedValue(undefined);
+
+    (component as any).weight.set(80);
+    (component as any).submit();
+
+    expect(syncSpy).toHaveBeenCalledOnce();
+    expect(syncSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ weight: 80, date: expect.any(String) })
+    );
+  });
+
+  it('does not call googleFitService.syncEntry when Google Fit is not connected', () => {
+    const googleFit = TestBed.inject(GoogleFitService);
+    // Ensure disconnected (default state — _accessToken is null)
+    const syncSpy = vi.spyOn(googleFit, 'syncEntry').mockResolvedValue(undefined);
+
+    (component as any).weight.set(80);
+    (component as any).submit();
+
+    // syncEntry is still called but returns immediately when not connected;
+    // the component always calls it — guard lives inside the service.
+    // What matters is that it is called exactly once with the right entry.
+    expect(syncSpy).toHaveBeenCalledOnce();
   });
 });

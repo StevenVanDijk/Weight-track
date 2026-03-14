@@ -308,6 +308,11 @@
 - **US-170** As a user, the last sync timestamp is persisted in localStorage alongside the Client ID so that it survives a page reload.
 - **US-171** As a user, a spinning icon is shown next to the active sync button while a sync is in progress so that I have visual feedback.
 
+### 13.6 Auto-sync on Entry Log
+- **US-175** As a user, when I log a new weight entry and Google Fit is connected, the entry is automatically synced to Google Fit in the background so that my data stays up to date without manual action.
+- **US-176** As a user, each weight entry is written to Google Fit at most once — subsequent calls for the same entry ID are skipped — so that duplicate data points are never created in Google Fit.
+- **US-177** As a user, if the background auto-sync to Google Fit fails (e.g. network error or expired token), the failure is silent and does not interrupt my weight-logging flow; I can still use the manual Export action to push data later.
+
 ---
 
 ### 12.2 BMI Chart
