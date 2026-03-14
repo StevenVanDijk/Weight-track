@@ -454,5 +454,214 @@ describe('GoogleFitService', () => {
     const fresh = TestBed.inject(GoogleFitService);
     expect(fresh.settings().clientId).toBe('');
     expect(fresh.settings().lastSyncDate).toBeNull();
+    expect(fresh.settings().syncedEntryIds).toEqual([]);
+  });
+
+  it('initialises syncedEntryIds as an empty array when not present in stored settings', () => {
+    localStorage.setItem('weight_google_fit', JSON.stringify({ clientId: 'x', lastSyncDate: null }));
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({});
+    const fresh = TestBed.inject(GoogleFitService);
+    expect(fresh.settings().syncedEntryIds).toEqual([]);
+  });
+
+  // ---------------------------------------------------------------------------
+  // syncEntry
+  // ---------------------------------------------------------------------------
+
+  describe('syncEntry', () => {
+    let originalFetch: typeof fetch;
+
+    beforeEach(() => {
+      originalFetch = window.fetch;
+    });
+
+    afterEach(() => {
+      window.fetch = originalFetch;
+    });
+
+    it('does nothing when not connected', async () => {
+      const fetchSpy = vi.fn();
+      window.fetch = fetchSpy;
+
+      await service.syncEntry({ id: 'e1', date: '2024-03-01', weight: 80 });
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when the entry ID is already in syncedEntryIds', async () => {
+      (service as any)._accessToken.set('fake-token');
+      (service as any)._settings.set({
+        ...(service as any)._settings(),
+        syncedEntryIds: ['e1'],
+      });
+      const fetchSpy = vi.fn();
+      window.fetch = fetchSpy;
+
+      await service.syncEntry({ id: 'e1', date: '2024-03-01', weight: 80 });
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('patches a single entry to Google Fit and marks its ID as synced', async () => {
+      (service as any)._accessToken.set('fake-token');
+
+      window.fetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('dataSources?dataTypeName')) {
+          return Promise.resolve(new Response(JSON.stringify({ dataSource: [] }), { status: 200 }));
+        }
+        if (opts?.method === 'POST') {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ dataStreamId: 'raw:com.google.weight:test:weight-track' }),
+              { status: 200 }
+            )
+          );
+        }
+        if (opts?.method === 'PATCH') {
+          return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+        }
+        return Promise.resolve(new Response('Not found', { status: 404 }));
+      });
+
+      await service.syncEntry({ id: 'e42', date: '2024-03-01', weight: 80.5 });
+
+      expect(service.settings().syncedEntryIds).toContain('e42');
+    });
+
+    it('does not mark the entry as synced when the PATCH request fails', async () => {
+      (service as any)._accessToken.set('fake-token');
+
+      window.fetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('dataSources?dataTypeName')) {
+          return Promise.resolve(new Response(JSON.stringify({ dataSource: [] }), { status: 200 }));
+        }
+        if (opts?.method === 'POST') {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ dataStreamId: 'raw:com.google.weight:test:weight-track' }),
+              { status: 200 }
+            )
+          );
+        }
+        if (opts?.method === 'PATCH') {
+          return Promise.resolve(new Response('Bad Request', { status: 400 }));
+        }
+        return Promise.resolve(new Response('', { status: 500 }));
+      });
+
+      await service.syncEntry({ id: 'e99', date: '2024-03-01', weight: 80.5 });
+
+      expect(service.settings().syncedEntryIds).not.toContain('e99');
+    });
+
+    it('does not throw when fetch rejects (network error)', async () => {
+      (service as any)._accessToken.set('fake-token');
+      window.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+
+      await expect(service.syncEntry({ id: 'e5', date: '2024-03-01', weight: 80 })).resolves.toBeUndefined();
+    });
+
+    it('does not mark an entry synced a second time after a successful first sync', async () => {
+      (service as any)._accessToken.set('fake-token');
+
+      const fetchSpy = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('dataSources?dataTypeName')) {
+          return Promise.resolve(new Response(JSON.stringify({ dataSource: [] }), { status: 200 }));
+        }
+        if (opts?.method === 'POST') {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ dataStreamId: 'raw:com.google.weight:test:weight-track' }),
+              { status: 200 }
+            )
+          );
+        }
+        if (opts?.method === 'PATCH') {
+          return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+        }
+        return Promise.resolve(new Response('Not found', { status: 404 }));
+      });
+      window.fetch = fetchSpy;
+
+      const entry: WeightEntry = { id: 'e7', date: '2024-03-01', weight: 80 };
+      await service.syncEntry(entry);
+      fetchSpy.mockClear();
+
+      // Second call with the same entry should be a no-op
+      await service.syncEntry(entry);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // exportToGoogleFit marks all entry IDs as synced
+  // ---------------------------------------------------------------------------
+
+  describe('exportToGoogleFit marks entries as synced', () => {
+    let originalFetch: typeof fetch;
+
+    const entries: WeightEntry[] = [
+      { id: 'exp-1', date: '2024-03-01', weight: 80.0 },
+      { id: 'exp-2', date: '2024-03-05', weight: 79.5 },
+    ];
+
+    beforeEach(() => {
+      originalFetch = window.fetch;
+      (service as any)._accessToken.set('fake-token');
+    });
+
+    afterEach(() => {
+      window.fetch = originalFetch;
+    });
+
+    it('adds all exported entry IDs to syncedEntryIds on success', async () => {
+      window.fetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('dataSources?dataTypeName')) {
+          return Promise.resolve(new Response(JSON.stringify({ dataSource: [] }), { status: 200 }));
+        }
+        if (opts?.method === 'POST') {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ dataStreamId: 'raw:com.google.weight:test:weight-track' }),
+              { status: 200 }
+            )
+          );
+        }
+        if (opts?.method === 'PATCH') {
+          return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+        }
+        return Promise.resolve(new Response('Not found', { status: 404 }));
+      });
+
+      await service.exportToGoogleFit(entries);
+
+      expect(service.settings().syncedEntryIds).toContain('exp-1');
+      expect(service.settings().syncedEntryIds).toContain('exp-2');
+    });
+
+    it('does not update syncedEntryIds when export fails', async () => {
+      window.fetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('dataSources?dataTypeName')) {
+          return Promise.resolve(new Response(JSON.stringify({ dataSource: [] }), { status: 200 }));
+        }
+        if (opts?.method === 'POST') {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ dataStreamId: 'raw:com.google.weight:test:weight-track' }),
+              { status: 200 }
+            )
+          );
+        }
+        if (opts?.method === 'PATCH') {
+          return Promise.resolve(new Response('Error', { status: 500 }));
+        }
+        return Promise.resolve(new Response('Not found', { status: 404 }));
+      });
+
+      await service.exportToGoogleFit(entries);
+
+      expect(service.settings().syncedEntryIds).not.toContain('exp-1');
+    });
   });
 });

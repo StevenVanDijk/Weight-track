@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { WeightService } from '../../services/weight';
 import { GamificationService } from '../../services/gamification';
+import { GoogleFitService } from '../../services/google-fit';
 
 export { AddEntryComponent };
 
@@ -16,6 +17,7 @@ class AddEntryComponent {
   private readonly router = inject(Router);
   protected readonly weightService = inject(WeightService);
   private readonly gam = inject(GamificationService);
+  private readonly googleFit = inject(GoogleFitService);
 
   protected weight = signal<number | null>(null);
   protected date = signal(new Date().toISOString().split('T')[0]);
@@ -66,11 +68,18 @@ class AddEntryComponent {
     }
     this.error.set('');
 
+    const date = this.date();
     this.weightService.addEntry({
-      date: this.date(),
+      date,
       weight: w,
       note: this.note().trim() || undefined,
     });
+
+    // Auto-sync to Google Fit if connected (fire-and-forget, silent on failure)
+    const newEntry = this.weightService.entries().find(e => e.date === date);
+    if (newEntry) {
+      this.googleFit.syncEntry(newEntry);
+    }
 
     const settings = this.weightService.settings();
     if (this.goalWeight() !== settings.goalWeight || this.height() !== settings.height) {
