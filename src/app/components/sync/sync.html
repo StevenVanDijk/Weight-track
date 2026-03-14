@@ -1,0 +1,132 @@
+<div class="sync fade-in">
+  <div class="page-header">
+    <div>
+      <h2>Google Fit Sync</h2>
+      <p class="subtitle">Import and export weight data via Google Fit</p>
+    </div>
+    <span class="material-icons gfit-icon">fitness_center</span>
+  </div>
+
+  <!-- Setup: Client ID input -->
+  <div class="card setup-card">
+    <h3>Setup</h3>
+    <p class="help-text">
+      Create a project in the
+      <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>,
+      enable the <strong>Fitness API</strong>, and create an OAuth 2.0 Web Client ID with this
+      origin added as an authorised JavaScript origin.
+    </p>
+    <label class="field-label" for="clientId">Google OAuth Client ID</label>
+    <div class="input-row">
+      <input
+        id="clientId"
+        class="text-input"
+        type="text"
+        placeholder="Paste your Client ID here…"
+        [value]="clientIdInput()"
+        (input)="clientIdInput.set($any($event.target).value)"
+        aria-label="Google OAuth Client ID"
+      />
+      <button class="btn btn-ghost save-btn" (click)="saveClientId()">Save</button>
+    </div>
+  </div>
+
+  <!-- Connection status -->
+  <div class="card connection-card">
+    <div class="connection-header">
+      <div class="connection-status">
+        <span class="status-dot" [class.connected]="gfit.isConnected()"></span>
+        <span>{{ gfit.isConnected() ? 'Connected to Google Fit' : 'Not connected' }}</span>
+      </div>
+
+      @if (!gfit.isConnected()) {
+        <button
+          class="btn btn-primary"
+          [disabled]="gfit.status() === 'connecting' || !clientIdInput().trim()"
+          (click)="connect()"
+          aria-label="Connect to Google Fit"
+        >
+          @if (gfit.status() === 'connecting') {
+            <span class="material-icons spinning">sync</span>
+            Connecting…
+          } @else {
+            <span class="material-icons">login</span>
+            Connect
+          }
+        </button>
+      } @else {
+        <button class="btn btn-ghost" (click)="disconnect()" aria-label="Disconnect from Google Fit">
+          <span class="material-icons">logout</span>
+          Disconnect
+        </button>
+      }
+    </div>
+
+    @if (gfit.settings().lastSyncDate) {
+      <p class="last-sync">
+        Last synced: {{ gfit.settings().lastSyncDate | date:'medium' }}
+      </p>
+    }
+  </div>
+
+  <!-- Sync actions -->
+  @if (gfit.isConnected()) {
+    <div class="actions-grid">
+      <div class="card action-card">
+        <span class="material-icons action-icon import-icon">cloud_download</span>
+        <h4>Import from Google Fit</h4>
+        <p>Pull weight entries from Google Fit into the app (last 12 months). Existing entries for the same date are updated.</p>
+        <button
+          class="btn btn-primary"
+          [disabled]="gfit.status() === 'syncing'"
+          (click)="importEntries()"
+          aria-label="Import from Google Fit"
+        >
+          @if (gfit.status() === 'syncing') {
+            <span class="material-icons spinning">sync</span>
+            Importing…
+          } @else {
+            <span class="material-icons">cloud_download</span>
+            Import
+          }
+        </button>
+      </div>
+
+      <div class="card action-card">
+        <span class="material-icons action-icon export-icon">cloud_upload</span>
+        <h4>Export to Google Fit</h4>
+        <p>Push all {{ weightService.entries().length }} local entr{{ weightService.entries().length === 1 ? 'y' : 'ies' }} to Google Fit.</p>
+        <button
+          class="btn btn-secondary"
+          [disabled]="gfit.status() === 'syncing' || weightService.entries().length === 0"
+          (click)="exportEntries()"
+          aria-label="Export to Google Fit"
+        >
+          @if (gfit.status() === 'syncing') {
+            <span class="material-icons spinning">sync</span>
+            Exporting…
+          } @else {
+            <span class="material-icons">cloud_upload</span>
+            Export
+          }
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- Status message -->
+  @if (gfit.message()) {
+    <div
+      class="status-banner"
+      [class.status-error]="gfit.status() === 'error'"
+      [class.status-success]="gfit.status() === 'success'"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="material-icons status-icon">
+        {{ gfit.status() === 'error' ? 'error_outline' : gfit.status() === 'success' ? 'check_circle' : 'info' }}
+      </span>
+      {{ gfit.message() }}
+    </div>
+  }
+</div>

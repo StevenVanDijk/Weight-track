@@ -20,5 +20,6 @@ export class App {
     { path: '/chart',        icon: 'show_chart',  label: 'Chart' },
     { path: '/history',      icon: 'history',     label: 'History' },
     { path: '/achievements', icon: 'emoji_events', label: 'Awards' },
+    { path: '/sync',         icon: 'sync',         label: 'Sync' },
   ];
 }

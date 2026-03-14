@@ -267,6 +267,46 @@
 - **US-139** As a user, my height is persisted across sessions so that I do not re-enter it each time.
 - **US-140** As a user, the height field is optional so that I can use the app without providing my height.
 
+---
+
+## 13. Google Fit Sync
+
+### 13.1 Setup
+- **US-148** As a user, I can navigate to a dedicated Sync page via the bottom navigation bar so that I can manage Google Fit connectivity.
+- **US-149** As a user, I can enter my Google OAuth 2.0 Client ID on the Sync page so that the app can authenticate with my Google account.
+- **US-150** As a user, my Client ID is persisted in localStorage under the key `weight_google_fit` so that I do not have to re-enter it after a page reload.
+- **US-151** As a user, if the Client ID field is empty the Connect button is disabled so that I cannot attempt authentication without configuration.
+
+### 13.2 Authentication
+- **US-152** As a user, I can tap "Connect" to open a Google OAuth 2.0 popup so that I can grant the app access to my fitness data.
+- **US-153** As a user, the app requests the `fitness.body.read` and `fitness.body.write` OAuth scopes so that it can both read and write weight data.
+- **US-154** As a user, after a successful sign-in the Sync page shows a green "Connected" indicator so that I can confirm the connection.
+- **US-155** As a user, I can tap "Disconnect" to revoke the access token and return to the disconnected state so that I can end the session.
+- **US-156** As a user, if authentication fails I see an error message explaining what went wrong so that I can take corrective action.
+- **US-157** As a user, the access token is stored only in memory (not localStorage) so that it is not persisted beyond the current session.
+
+### 13.3 Import from Google Fit
+- **US-158** As a user, I can tap "Import" to pull the last 12 months of weight entries from Google Fit into the app.
+- **US-159** As a user, each imported entry is merged by date — if a local entry already exists for the same date it is updated rather than duplicated.
+- **US-160** As a user, after a successful import I see a message indicating how many entries were imported.
+- **US-161** As a user, the Import button is disabled while a sync is in progress so that duplicate requests are prevented.
+- **US-162** As a user, if the Google Fit API returns an error during import I see an error message with the HTTP status code.
+
+### 13.4 Export to Google Fit
+- **US-163** As a user, I can tap "Export" to push all local weight entries to Google Fit.
+- **US-164** As a user, on first export the app creates a custom `weight-track` data source in Google Fit; on subsequent exports it reuses the existing source.
+- **US-165** As a user, after a successful export I see a message indicating how many entries were exported.
+- **US-166** As a user, the Export button is disabled when there are no local entries so that it is not misleading.
+- **US-167** As a user, the Export button is disabled while a sync is in progress so that duplicate requests are prevented.
+- **US-168** As a user, if the Google Fit API returns an error during export I see an error message with the HTTP status code.
+
+### 13.5 Sync Status
+- **US-169** As a user, after any sync operation (import or export) I see the date and time of the last successful sync so that I know my data is up to date.
+- **US-170** As a user, the last sync timestamp is persisted in localStorage alongside the Client ID so that it survives a page reload.
+- **US-171** As a user, a spinning icon is shown next to the active sync button while a sync is in progress so that I have visual feedback.
+
+---
+
 ### 12.2 BMI Chart
 - **US-141** As a user, when my height is set I see a "Show BMI" toggle button on the Chart screen so that I can overlay BMI onto the weight chart.
 - **US-142** As a user, when BMI is enabled, a pink BMI line is drawn on the chart with its own right-side Y axis so that both weight and BMI scales are clearly labelled.
