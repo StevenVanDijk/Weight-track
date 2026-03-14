@@ -13,7 +13,11 @@ let commit = 'dev';
 let message = '';
 try {
   commit = execSync('git rev-parse --short HEAD', { cwd: root }).toString().trim();
-  message = execSync('git log -1 --format=%s', { cwd: root }).toString().trim().slice(0, 20);
+  const raw = execSync('git log -1 --format=%B', { cwd: root }).toString().trim();
+  // Merge commits look like "Merge pull request #N from branch\n\nOriginal subject"
+  // Strip that preamble and use the original subject line instead.
+  const mergeMatch = raw.match(/^Merge pull request #\d+ from \S+\n+(.+)/);
+  message = (mergeMatch ? mergeMatch[1] : raw.split('\n')[0]).slice(0, 20);
 } catch {
   // not a git repo or git not available — keep defaults
 }
