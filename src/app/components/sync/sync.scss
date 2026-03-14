@@ -1,0 +1,265 @@
+.sync {
+  padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary-light), var(--secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+}
+
+.gfit-icon {
+  font-size: 32px;
+  color: var(--primary-light);
+  opacity: 0.8;
+}
+
+// Setup card
+.setup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+
+  h3 {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+}
+
+.help-text {
+  font-size: 0.83rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+
+  a {
+    color: var(--primary-light);
+    text-decoration: none;
+
+    &:hover { text-decoration: underline; }
+  }
+
+  strong { color: var(--text); }
+}
+
+.field-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.text-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  outline: none;
+  transition: border-color 0.2s;
+
+  &:focus { border-color: var(--primary-light); }
+  &::placeholder { color: var(--text-muted); opacity: 0.6; }
+}
+
+.save-btn {
+  white-space: nowrap;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+}
+
+// Connection card
+.connection-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.connection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+
+  &.connected {
+    background: var(--success);
+    box-shadow: 0 0 6px var(--success);
+  }
+}
+
+.last-sync {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+// Actions grid
+.actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+
+  @media (max-width: 400px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.action-card {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+
+  h4 {
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  p {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    flex: 1;
+  }
+
+  .btn {
+    width: 100%;
+    justify-content: center;
+    gap: 6px;
+  }
+}
+
+.action-icon {
+  font-size: 28px;
+}
+
+.import-icon { color: var(--secondary); }
+.export-icon { color: var(--primary-light); }
+
+// Status banner
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  background: rgba(79, 70, 229, 0.12);
+  border: 1px solid rgba(79, 70, 229, 0.25);
+  color: var(--text);
+
+  &.status-error {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+  }
+
+  &.status-success {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+  }
+}
+
+.status-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+// Button variants
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 10px 18px;
+  transition: all 0.2s;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+
+  &:hover:not(:disabled) { background: var(--primary-dark); }
+}
+
+.btn-secondary {
+  background: var(--secondary);
+  color: var(--bg);
+
+  &:hover:not(:disabled) { opacity: 0.85; }
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+
+  &:hover:not(:disabled) {
+    background: var(--bg-card-hover);
+    border-color: var(--text-muted);
+  }
+}
+
+// Spinning icon animation
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite;
+}

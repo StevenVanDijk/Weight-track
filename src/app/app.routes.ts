@@ -22,5 +22,9 @@ export const routes: Routes = [
     path: 'achievements',
     loadComponent: () => import('./components/achievements/achievements').then(m => m.AchievementsComponent),
   },
+  {
+    path: 'sync',
+    loadComponent: () => import('./components/sync/sync').then(m => m.SyncComponent),
+  },
   { path: '**', redirectTo: 'dashboard' },
 ];
