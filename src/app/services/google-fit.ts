@@ -80,11 +80,32 @@ export class GoogleFitService {
 
   /**
    * Call this when the Sync page initialises.  If the user just returned from
-   * the Google OAuth redirect (token is in the URL fragment), GIS will detect
-   * it and fire the callback, storing the access token.
+   * the Google OAuth redirect (token or error is in the URL), this method will
+   * process the response and update the service state accordingly.
    */
   async handleRedirectCallback(): Promise<void> {
-    if (!window.location.hash.includes('access_token')) return;
+    const hash = window.location.hash;
+    const search = window.location.search;
+
+    // Google returns errors either as a hash fragment or query parameter.
+    const errorMatch = hash.match(/[#&]error=([^&]+)/) ?? search.match(/[?&]error=([^&]+)/);
+    if (errorMatch) {
+      const errorCode = decodeURIComponent(errorMatch[1]);
+      history.replaceState(null, '', window.location.pathname);
+      this._status.set('error');
+      if (errorCode === 'access_denied') {
+        this._message.set(
+          'Google sign-in was blocked (access_denied). ' +
+          'The app has not completed Google\'s verification process. ' +
+          'Add your Google account as a test user in the OAuth consent screen of your Google Cloud Console project.'
+        );
+      } else {
+        this._message.set(`Google sign-in failed: ${errorCode}`);
+      }
+      return;
+    }
+
+    if (!hash.includes('access_token')) return;
 
     const clientId = this._settings().clientId;
     if (!clientId) return;
@@ -100,7 +121,15 @@ export class GoogleFitService {
           ux_mode: 'redirect',
           redirect_uri: this.redirectUri,
           callback: (resp: any) => {
-            if (!resp.error) {
+            if (resp.error) {
+              const isAccessDenied = resp.error === 'access_denied';
+              this._status.set('error');
+              this._message.set(
+                isAccessDenied
+                  ? 'Google sign-in was blocked (access_denied). Add your Google account as a test user in the OAuth consent screen of your Google Cloud Console project.'
+                  : `Google sign-in failed: ${resp.error_description ?? resp.error}`
+              );
+            } else {
               this._accessToken.set(resp.access_token as string);
               this._status.set('idle');
               this._message.set('Connected to Google Fit.');

@@ -284,6 +284,9 @@
 - **US-155** As a user, I can tap "Disconnect" to revoke the access token and return to the disconnected state so that I can end the session.
 - **US-156** As a user, if authentication fails I see an error message explaining what went wrong so that I can take corrective action.
 - **US-157** As a user, the access token is stored only in memory (not localStorage) so that it is not persisted beyond the current session.
+- **US-172** As a user, if Google redirects back to the app with an `access_denied` error (in the URL hash or query string), I see an error message telling me to add my account as a test user in Google Cloud Console so that I know what corrective action to take.
+- **US-173** As a user, if Google redirects back with any other OAuth error code, I see an error message containing the code so that I can diagnose the problem.
+- **US-174** As a user, I see a warning note in the Setup card explaining that if sign-in is blocked, I need to add my Google account as a test user in the Google Cloud Console OAuth consent screen.
 
 ### 13.3 Import from Google Fit
 - **US-158** As a user, I can tap "Import" to pull the last 12 months of weight entries from Google Fit into the app.
