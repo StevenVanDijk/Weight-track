@@ -37,6 +37,14 @@ export class GoogleFitService {
     this.saveSettings();
   }
 
+  /**
+   * The redirect URI used for the OAuth redirect flow (standalone PWA mode).
+   * Must be added as an Authorised redirect URI in Google Cloud Console.
+   */
+  get redirectUri(): string {
+    return window.location.origin + '/sync';
+  }
+
   async connect(): Promise<void> {
     const clientId = this._settings().clientId;
     if (!clientId) {
@@ -50,14 +58,61 @@ export class GoogleFitService {
 
     try {
       await this.loadGsiScript();
-      const token = await this.requestToken(clientId);
-      this._accessToken.set(token);
-      this._status.set('idle');
-      this._message.set('Connected to Google Fit.');
+
+      if (this.isStandalonePwa()) {
+        // In standalone PWA mode the popup's window.opener is null so GIS cannot
+        // post the token back. Use redirect flow instead — the page navigates away
+        // and handleRedirectCallback() picks up the token on return.
+        this.startRedirectFlow(clientId);
+        // Execution stops here; the browser navigates to Google.
+      } else {
+        const token = await this.requestTokenViaPopup(clientId);
+        this._accessToken.set(token);
+        this._status.set('idle');
+        this._message.set('Connected to Google Fit.');
+      }
     } catch (err: unknown) {
       this._accessToken.set(null);
       this._status.set('error');
       this._message.set(err instanceof Error ? err.message : 'Sign-in failed.');
+    }
+  }
+
+  /**
+   * Call this when the Sync page initialises.  If the user just returned from
+   * the Google OAuth redirect (token is in the URL fragment), GIS will detect
+   * it and fire the callback, storing the access token.
+   */
+  async handleRedirectCallback(): Promise<void> {
+    if (!window.location.hash.includes('access_token')) return;
+
+    const clientId = this._settings().clientId;
+    if (!clientId) return;
+
+    try {
+      await this.loadGsiScript();
+      await new Promise<void>((resolve) => {
+        // Registering the token client causes GIS to inspect the URL fragment.
+        // If a valid token response is present GIS calls the callback immediately.
+        (window as any).google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: SCOPES,
+          ux_mode: 'redirect',
+          redirect_uri: this.redirectUri,
+          callback: (resp: any) => {
+            if (!resp.error) {
+              this._accessToken.set(resp.access_token as string);
+              this._status.set('idle');
+              this._message.set('Connected to Google Fit.');
+              // Remove the fragment so a page refresh doesn't re-process it.
+              history.replaceState(null, '', window.location.pathname);
+            }
+            resolve();
+          },
+        });
+      });
+    } catch {
+      // Silently ignore — not a redirect return or GIS unavailable.
     }
   }
 
@@ -225,8 +280,16 @@ export class GoogleFitService {
     });
   }
 
-  /** Opens the Google OAuth2 token popup and returns the access token. */
-  private requestToken(clientId: string): Promise<string> {
+  /** Returns true when running as an installed PWA in standalone display mode. */
+  private isStandalonePwa(): boolean {
+    return (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true // Safari / iOS
+    );
+  }
+
+  /** Popup flow (browser): opens the Google sign-in popup and resolves with the token. */
+  private requestTokenViaPopup(clientId: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: clientId,
@@ -244,6 +307,19 @@ export class GoogleFitService {
       });
       tokenClient.requestAccessToken({ prompt: '' });
     });
+  }
+
+  /** Redirect flow (standalone PWA): navigates the page to Google's auth endpoint. */
+  private startRedirectFlow(clientId: string): void {
+    const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: SCOPES,
+      ux_mode: 'redirect',
+      redirect_uri: this.redirectUri,
+      callback: () => {}, // not called during the outbound redirect
+    });
+    tokenClient.requestAccessToken({ prompt: '' });
+    // The browser navigates away; nothing after this line runs.
   }
 
   /**
