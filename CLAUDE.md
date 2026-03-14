@@ -51,7 +51,7 @@ All routes are **lazy-loaded**. Routes: `/dashboard`, `/add`, `/chart`, `/histor
 
 No feature, behaviour change, or new component is considered complete without both.
 
-**After every successful change, create a pull request** targeting `main` using `gh pr create`. Include a short summary of what changed and why.
+**After every successful change, commit and push to the current branch.**
 
 ## Adding an Achievement
 
