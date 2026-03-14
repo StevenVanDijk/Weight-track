@@ -17,7 +17,7 @@ try {
   // Merge commits look like "Merge pull request #N from branch\n\nOriginal subject"
   // Strip that preamble and use the original subject line instead.
   const mergeMatch = raw.match(/^Merge pull request #\d+ from \S+\n+(.+)/);
-  message = (mergeMatch ? mergeMatch[1] : raw.split('\n')[0]).slice(0, 20);
+  message = (mergeMatch ? mergeMatch[1] : raw.split('\n')[0]).slice(0, 20).replace(/'/g, "\\'");
 } catch {
   // not a git repo or git not available — keep defaults
 }
