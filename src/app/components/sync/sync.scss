@@ -62,6 +62,21 @@
   strong { color: var(--text); }
 }
 
+.uri-block {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  overflow-x: auto;
+}
+
+.uri-value {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.82rem;
+  color: var(--primary-light);
+  white-space: nowrap;
+}
+
 .field-label {
   font-size: 0.82rem;
   color: var(--text-muted);

@@ -20,6 +20,8 @@ class SyncComponent {
   constructor() {
     // Pre-fill the input with any saved client ID
     this.clientIdInput.set(this.gfit.settings().clientId);
+    // If returning from the OAuth redirect flow (standalone PWA), pick up the token.
+    this.gfit.handleRedirectCallback();
   }
 
   protected saveClientId(): void {

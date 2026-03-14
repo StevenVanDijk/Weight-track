@@ -13,9 +13,13 @@
     <p class="help-text">
       Create a project in the
       <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a>,
-      enable the <strong>Fitness API</strong>, and create an OAuth 2.0 Web Client ID with this
-      origin added as an authorised JavaScript origin.
+      enable the <strong>Fitness API</strong>, and create an OAuth 2.0 Web Client ID. Add the following
+      under <strong>Authorised JavaScript origins</strong> (browser) and
+      <strong>Authorised redirect URIs</strong> (installed PWA on mobile):
     </p>
+    <div class="uri-block">
+      <code class="uri-value">{{ gfit.redirectUri }}</code>
+    </div>
     <label class="field-label" for="clientId">Google OAuth Client ID</label>
     <div class="input-row">
       <input

@@ -74,6 +74,39 @@ describe('GoogleFitService', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // redirectUri
+  // ---------------------------------------------------------------------------
+
+  it('redirectUri is origin + /sync', () => {
+    expect(service.redirectUri).toBe(window.location.origin + '/sync');
+  });
+
+  // ---------------------------------------------------------------------------
+  // handleRedirectCallback — no fragment
+  // ---------------------------------------------------------------------------
+
+  it('handleRedirectCallback does nothing when URL has no access_token fragment', async () => {
+    // Default jsdom URL has no fragment — should resolve without error
+    await expect(service.handleRedirectCallback()).resolves.toBeUndefined();
+    expect(service.isConnected()).toBe(false);
+  });
+
+  it('handleRedirectCallback does nothing when no client ID is saved', async () => {
+    // Simulate a fragment without a saved client ID
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '#access_token=tok&token_type=Bearer' },
+      configurable: true,
+    });
+    await service.handleRedirectCallback();
+    expect(service.isConnected()).toBe(false);
+    // Restore
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '' },
+      configurable: true,
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // importFromGoogleFit — not connected
   // ---------------------------------------------------------------------------
 
