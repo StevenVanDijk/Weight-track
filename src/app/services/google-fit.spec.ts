@@ -214,6 +214,23 @@ describe('GoogleFitService', () => {
     expect(service.status()).toBe('idle');
   });
 
+  it('handleRedirectCallback resets connecting status to error when no token is in the URL', async () => {
+    // Simulate the state after connect() was called (status = connecting) but
+    // the user returned from the consent flow without a token in the URL hash
+    // (e.g. the Chrome Custom Tab handled the redirect).
+    (service as any)._status.set('connecting');
+    await service.handleRedirectCallback();
+    expect(service.status()).toBe('error');
+    expect(service.message()).toContain('did not complete');
+  });
+
+  it('handleRedirectCallback does not change non-connecting status when no token in URL', async () => {
+    // e.g. user navigates away and back while idle — should not show an error
+    expect(service.status()).toBe('idle');
+    await service.handleRedirectCallback();
+    expect(service.status()).toBe('idle');
+  });
+
   it('handleRedirectCallback sets error status for access_denied in URL hash', async () => {
     Object.defineProperty(window, 'location', {
       value: { ...window.location, hash: '#error=access_denied', search: '', pathname: '/sync' },
@@ -269,6 +286,73 @@ describe('GoogleFitService', () => {
     Object.defineProperty(window, 'location', {
       value: { ...window.location, hash: '', search: '' },
       configurable: true,
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // refreshFromStorage
+  // ---------------------------------------------------------------------------
+
+  describe('refreshFromStorage', () => {
+    it('returns false and stays disconnected when localStorage has no token', () => {
+      const found = service.refreshFromStorage();
+      expect(found).toBe(false);
+      expect(service.isConnected()).toBe(false);
+    });
+
+    it('picks up a valid token written to localStorage by another context (CCT)', () => {
+      // Simulate a Chrome Custom Tab instance writing the token to localStorage
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: 'my-client',
+        lastSyncDate: null,
+        syncedEntryIds: [],
+        accessToken: 'cct-token',
+        tokenExpiry: Date.now() + 3_600_000,
+      }));
+
+      const found = service.refreshFromStorage();
+
+      expect(found).toBe(true);
+      expect(service.isConnected()).toBe(true);
+      expect(service.status()).toBe('idle');
+      expect(service.message()).toContain('Connected');
+    });
+
+    it('does not apply an expired token found in localStorage', () => {
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: 'my-client',
+        lastSyncDate: null,
+        syncedEntryIds: [],
+        accessToken: 'old-token',
+        tokenExpiry: Date.now() - 1000,
+      }));
+
+      const found = service.refreshFromStorage();
+
+      expect(found).toBe(false);
+      expect(service.isConnected()).toBe(false);
+    });
+
+    it('does not overwrite an already-connected token', () => {
+      // Service is already connected with a valid token
+      (service as any).persistToken('existing-token', 3600);
+      expect(service.isConnected()).toBe(true);
+
+      // localStorage gets updated with a different token (e.g. CCT reconnected)
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: 'my-client',
+        lastSyncDate: null,
+        syncedEntryIds: [],
+        accessToken: 'new-token',
+        tokenExpiry: Date.now() + 3_600_000,
+      }));
+
+      const found = service.refreshFromStorage();
+
+      // Already connected — should not re-apply
+      expect(found).toBe(false);
+      // The underlying token signal remains the original one
+      expect((service as any)._accessToken()).toBe('existing-token');
     });
   });
 

@@ -121,7 +121,14 @@ export class GoogleFitService {
       return;
     }
 
-    if (!hash.includes('access_token')) return;
+    if (!hash.includes('access_token')) {
+      // Auth flow was in progress but no token arrived — let the user retry.
+      if (this._status() === 'connecting') {
+        this._status.set('error');
+        this._message.set('Sign-in did not complete. Please try connecting again.');
+      }
+      return;
+    }
 
     const clientId = this._settings().clientId;
     if (!clientId) return;
@@ -147,6 +154,30 @@ export class GoogleFitService {
     this.clearToken();
     this._status.set('idle');
     this._message.set('Disconnected from Google Fit.');
+  }
+
+  /**
+   * Re-reads settings from localStorage and applies any token that was written
+   * there by another browser context — specifically a Chrome Custom Tab that
+   * handled the OAuth redirect on Android PWA.  The CCT boots a fresh Angular
+   * instance, which calls handleRedirectCallback() and persists the token to
+   * localStorage; when the CCT closes and the PWA comes to the foreground this
+   * method picks up that token.
+   *
+   * Returns true if a new valid token was found and applied.
+   */
+  refreshFromStorage(): boolean {
+    const fresh = this.loadSettings();
+    this._settings.set(fresh);
+    const { accessToken, tokenExpiry } = fresh;
+    const hasValidToken = !!(accessToken && tokenExpiry && Date.now() < tokenExpiry);
+    if (hasValidToken && !this._accessToken()) {
+      this._accessToken.set(accessToken!);
+      this._status.set('idle');
+      this._message.set('Connected to Google Fit.');
+      return true;
+    }
+    return false;
   }
 
   /**

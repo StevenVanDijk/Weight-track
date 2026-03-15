@@ -5,9 +5,11 @@ import { WeightService } from '../../services/weight';
 
 describe('SyncComponent', () => {
   let handleRedirectCallbackSpy: ReturnType<typeof vi.fn>;
+  let refreshFromStorageSpy: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
+  function buildModule(refreshReturns = false) {
     handleRedirectCallbackSpy = vi.fn().mockResolvedValue(undefined);
+    refreshFromStorageSpy = vi.fn().mockReturnValue(refreshReturns);
 
     TestBed.configureTestingModule({
       imports: [SyncComponent],
@@ -16,6 +18,7 @@ describe('SyncComponent', () => {
           provide: GoogleFitService,
           useValue: {
             handleRedirectCallback: handleRedirectCallbackSpy,
+            refreshFromStorage: refreshFromStorageSpy,
             settings: () => ({ clientId: '', lastSyncDate: null }),
             isConnected: () => false,
             status: () => 'idle',
@@ -35,43 +38,69 @@ describe('SyncComponent', () => {
         },
       ],
     });
-  });
+  }
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   it('calls handleRedirectCallback on construction', () => {
+    buildModule();
     TestBed.createComponent(SyncComponent);
     expect(handleRedirectCallbackSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('calls handleRedirectCallback again when the page becomes visible', () => {
+  it('calls refreshFromStorage then handleRedirectCallback when the page becomes visible and no token in storage', () => {
+    buildModule(false); // refreshFromStorage returns false → no token found in storage
     TestBed.createComponent(SyncComponent);
-    // Simulate app coming to foreground (e.g. after Android Custom Tab OAuth redirect)
+
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(refreshFromStorageSpy).toHaveBeenCalledTimes(1);
+    // handleRedirectCallback called once on construction + once after visibility change
     expect(handleRedirectCallbackSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('does not call handleRedirectCallback when the page becomes hidden', () => {
+  it('skips handleRedirectCallback when refreshFromStorage finds a token in storage (CCT scenario)', () => {
+    buildModule(true); // refreshFromStorage returns true → token recovered from CCT
     TestBed.createComponent(SyncComponent);
+    handleRedirectCallbackSpy.mockClear();
+    refreshFromStorageSpy.mockClear();
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(refreshFromStorageSpy).toHaveBeenCalledTimes(1);
+    // Token already found — no need to check the URL hash
+    expect(handleRedirectCallbackSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not call refreshFromStorage or handleRedirectCallback when the page becomes hidden', () => {
+    buildModule();
+    TestBed.createComponent(SyncComponent);
+    handleRedirectCallbackSpy.mockClear();
+    refreshFromStorageSpy.mockClear();
+
     Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
-    // Only the initial constructor call — not triggered for hidden state
-    expect(handleRedirectCallbackSpy).toHaveBeenCalledTimes(1);
+
+    expect(refreshFromStorageSpy).not.toHaveBeenCalled();
+    expect(handleRedirectCallbackSpy).not.toHaveBeenCalled();
   });
 
   it('removes the visibilitychange listener when the component is destroyed', () => {
+    buildModule();
     const fixture = TestBed.createComponent(SyncComponent);
-    // Reset call count after construction
     handleRedirectCallbackSpy.mockClear();
+    refreshFromStorageSpy.mockClear();
 
     fixture.destroy();
 
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
-    // Listener should have been removed — no additional calls
+
+    expect(refreshFromStorageSpy).not.toHaveBeenCalled();
     expect(handleRedirectCallbackSpy).not.toHaveBeenCalled();
   });
 });

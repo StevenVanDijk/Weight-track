@@ -23,13 +23,20 @@ class SyncComponent {
     // If returning from the OAuth redirect flow (standalone PWA), pick up the token.
     this.gfit.handleRedirectCallback();
 
-    // On Android PWA, the OAuth redirect opens in a Chrome Custom Tab while the
-    // app stays alive in the background. When the user returns, the app becomes
-    // visible again but Angular does not re-run the constructor. Re-check for the
-    // OAuth callback token whenever the page becomes visible.
+    // On Android PWA the OAuth redirect opens in a Chrome Custom Tab (CCT)
+    // while the app stays alive in the background.  The CCT boots a fresh
+    // Angular instance that calls handleRedirectCallback() and persists the
+    // token to localStorage, then closes.  When the PWA comes back to the
+    // foreground the URL has NOT changed (no token in the hash), so we must
+    // first check localStorage for the token written by the CCT instance.
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        this.gfit.handleRedirectCallback();
+        const found = this.gfit.refreshFromStorage();
+        if (!found) {
+          // Fall back to the URL-hash check (desktop redirect flow or cases
+          // where the CCT does route the redirect back into the PWA WebView).
+          this.gfit.handleRedirectCallback();
+        }
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
