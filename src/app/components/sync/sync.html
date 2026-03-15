@@ -139,4 +139,55 @@
       {{ gfit.message() }}
     </div>
   }
+
+  <!-- Debug Logs -->
+  <div class="card logs-card">
+    <button class="logs-header" (click)="toggleLogs()" aria-expanded="{{ logsExpanded() }}" aria-controls="logs-panel">
+      <span class="material-icons logs-header-icon">bug_report</span>
+      <span class="logs-header-label">Debug Logs <span class="log-count">({{ gfit.logs().length }})</span></span>
+      <span class="material-icons logs-chevron" [class.rotated]="logsExpanded()">expand_more</span>
+    </button>
+
+    @if (logsExpanded()) {
+      <div id="logs-panel" class="logs-panel">
+        <div class="logs-actions">
+          <button
+            class="btn btn-ghost btn-sm"
+            (click)="downloadLogs()"
+            [disabled]="gfit.logs().length === 0"
+            aria-label="Download debug logs as JSON"
+          >
+            <span class="material-icons">download</span>
+            Export Logs
+          </button>
+          <button
+            class="btn btn-ghost btn-sm"
+            (click)="clearLogs()"
+            [disabled]="gfit.logs().length === 0"
+            aria-label="Clear debug logs"
+          >
+            <span class="material-icons">delete_sweep</span>
+            Clear
+          </button>
+        </div>
+
+        @if (gfit.logs().length === 0) {
+          <p class="logs-empty">No logs yet. Interact with Google Fit to generate logs.</p>
+        } @else {
+          <div class="logs-list" role="log" aria-label="Google Fit debug log">
+            @for (entry of gfit.logs().slice().reverse(); track $index) {
+              <div class="log-entry log-entry--{{ entry.level }}">
+                <span class="log-ts">{{ entry.ts.slice(11, 23) }}</span>
+                <span class="log-context">[{{ entry.context }}]</span>
+                <span class="log-msg">{{ entry.message }}</span>
+                @if (entry.detail) {
+                  <span class="log-detail">{{ entry.detail }}</span>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
+  </div>
 </div>
