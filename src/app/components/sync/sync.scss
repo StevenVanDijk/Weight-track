@@ -1,5 +1,11 @@
 .sync {
   padding: 16px;
+  // Extra bottom padding so that the fixed bottom nav bar never overlaps the
+  // debug logs panel when it is expanded near the bottom of the scroll area.
+  // The .app-content container already adds padding-bottom: var(--nav-height),
+  // but the logs panel's internal scroll area and action buttons need the
+  // additional clearance so users can reach Export/Clear without obstruction.
+  padding-bottom: calc(var(--nav-height) + 24px);
   max-width: 600px;
   margin: 0 auto;
   display: flex;
