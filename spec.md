@@ -319,6 +319,15 @@
 - **US-176** As a user, each weight entry is written to Google Fit at most once — subsequent calls for the same entry ID are skipped — so that duplicate data points are never created in Google Fit.
 - **US-177** As a user, if the background auto-sync to Google Fit fails (e.g. network error or expired token), the failure is silent and does not interrupt my weight-logging flow; I can still use the manual Export action to push data later.
 
+### 13.7 Debug Logging
+- **US-184** As a developer, every key step of the Google Fit flow (OAuth initiation, token receipt, API calls and responses, data source creation) is captured as a structured log entry so that failures can be diagnosed without access to the user's device console.
+- **US-185** As a developer, each log entry contains a timestamp (ISO), severity level (info/warn/error), context label, human-readable message, and an optional detail field for API response bodies.
+- **US-186** As a developer, log entries are capped at 1 000 entries (oldest discarded) so that memory usage remains bounded during long sessions.
+- **US-187** As a user, I can expand a "Debug Logs" panel on the Sync page to see a real-time list of Google Fit activity (newest entries shown first) so that I can self-diagnose connection problems.
+- **US-188** As a user, I can tap "Export Logs" to download a JSON file containing all captured log entries plus environment metadata (user agent, origin, standalone mode, connection state) so that I can share diagnostics with a developer.
+- **US-189** As a user, I can tap "Clear" in the Debug Logs panel to discard all current log entries so that I can start a fresh diagnostic capture.
+- **US-190** As a developer, access tokens are never written to log entries — the URL hash is sanitised to `[REDACTED]` before logging — so that credentials are not accidentally exported.
+
 ---
 
 ### 12.2 BMI Chart

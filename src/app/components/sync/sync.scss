@@ -288,3 +288,124 @@
 .spinning {
   animation: spin 0.8s linear infinite;
 }
+
+// Debug Logs panel
+.logs-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.logs-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-align: left;
+  transition: background 0.15s;
+
+  &:hover { background: var(--bg-card-hover); }
+}
+
+.logs-header-icon {
+  font-size: 18px;
+  color: var(--text-muted);
+}
+
+.logs-header-label {
+  flex: 1;
+}
+
+.log-count {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.logs-chevron {
+  font-size: 20px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+
+  &.rotated { transform: rotate(180deg); }
+}
+
+.logs-panel {
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.logs-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
+.logs-empty {
+  padding: 16px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.logs-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.log-entry {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+
+  &--info  { color: var(--text-muted); }
+  &--warn  { color: #fcd34d; }
+  &--error { color: #fca5a5; }
+
+  // detail spans full width on its own line
+  .log-detail {
+    grid-column: 1 / -1;
+    padding-left: 2px;
+    opacity: 0.7;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+}
+
+.log-ts {
+  color: var(--text-muted);
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.log-context {
+  color: var(--primary-light);
+  flex-shrink: 0;
+}
+
+.log-msg {
+  word-break: break-word;
+}

@@ -16,6 +16,7 @@ class SyncComponent {
   protected readonly weightService = inject(WeightService);
 
   protected readonly clientIdInput = signal('');
+  protected readonly logsExpanded = signal(false);
 
   constructor() {
     // Pre-fill the input with any saved client ID
@@ -66,5 +67,17 @@ class SyncComponent {
 
   protected async exportEntries(): Promise<void> {
     await this.gfit.exportToGoogleFit(this.weightService.entries());
+  }
+
+  protected toggleLogs(): void {
+    this.logsExpanded.update(v => !v);
+  }
+
+  protected downloadLogs(): void {
+    this.gfit.downloadLogs();
+  }
+
+  protected clearLogs(): void {
+    this.gfit.clearLogs();
   }
 }
