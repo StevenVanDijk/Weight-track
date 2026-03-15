@@ -5,11 +5,11 @@ import { WeightService } from '../../services/weight';
 
 describe('SyncComponent', () => {
   let handleRedirectCallbackSpy: ReturnType<typeof vi.fn>;
-  let refreshFromStorageSpy: ReturnType<typeof vi.fn>;
+  let resetToIdleSpy: ReturnType<typeof vi.fn>;
 
-  function buildModule(refreshReturns = false) {
+  function buildModule(isConnected = false) {
     handleRedirectCallbackSpy = vi.fn().mockResolvedValue(undefined);
-    refreshFromStorageSpy = vi.fn().mockReturnValue(refreshReturns);
+    resetToIdleSpy = vi.fn();
 
     TestBed.configureTestingModule({
       imports: [SyncComponent],
@@ -18,9 +18,9 @@ describe('SyncComponent', () => {
           provide: GoogleFitService,
           useValue: {
             handleRedirectCallback: handleRedirectCallbackSpy,
-            refreshFromStorage: refreshFromStorageSpy,
+            resetToIdle: resetToIdleSpy,
             settings: () => ({ clientId: '', lastSyncDate: null }),
-            isConnected: () => false,
+            isConnected: () => isConnected,
             status: () => 'idle',
             message: () => '',
             logs: () => [],
@@ -48,6 +48,8 @@ describe('SyncComponent', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it('calls handleRedirectCallback on construction (no fromVisibilityChange arg)', () => {
@@ -58,88 +60,63 @@ describe('SyncComponent', () => {
     expect(handleRedirectCallbackSpy).toHaveBeenCalledWith();
   });
 
-  it('calls refreshFromStorage then handleRedirectCallback(true) when the page becomes visible and no token in storage', () => {
-    vi.useFakeTimers();
-    buildModule(false); // refreshFromStorage returns false → no token found in storage
-    TestBed.createComponent(SyncComponent);
-
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-
-    expect(refreshFromStorageSpy).toHaveBeenCalledTimes(1);
-    // handleRedirectCallback called once on construction + once after visibility change
-    expect(handleRedirectCallbackSpy).toHaveBeenCalledTimes(2);
-    // The visibility-change call must pass fromVisibilityChange=true to avoid a false error
-    expect(handleRedirectCallbackSpy).toHaveBeenCalledWith(true);
-    vi.useRealTimers();
-  });
-
-  it('retries refreshFromStorage after 500ms delay when token not found on first try', () => {
+  it('calls handleRedirectCallback(true) after 300ms delay when page becomes visible and not connected', () => {
     vi.useFakeTimers();
     buildModule(false);
-    TestBed.createComponent(SyncComponent);
-    refreshFromStorageSpy.mockClear();
-
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-
-    expect(refreshFromStorageSpy).toHaveBeenCalledTimes(1);
-
-    // After 500ms, a retry should fire since isConnected() returns false
-    vi.advanceTimersByTime(500);
-    expect(refreshFromStorageSpy).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
-  });
-
-  it('does not retry refreshFromStorage when already connected', () => {
-    vi.useFakeTimers();
-    buildModule(false);
-    // Override isConnected to return true (simulates BroadcastChannel token arrival)
-    const gfitMock = TestBed.inject(GoogleFitService) as any;
-    gfitMock.isConnected = () => true;
-    TestBed.createComponent(SyncComponent);
-    refreshFromStorageSpy.mockClear();
-
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
-    document.dispatchEvent(new Event('visibilitychange'));
-
-    expect(refreshFromStorageSpy).toHaveBeenCalledTimes(1);
-
-    // After 500ms, retry should NOT fire since isConnected() returns true
-    vi.advanceTimersByTime(500);
-    expect(refreshFromStorageSpy).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
-  });
-
-  it('skips handleRedirectCallback when refreshFromStorage finds a token in storage (CCT scenario)', () => {
-    vi.useFakeTimers();
-    buildModule(true); // refreshFromStorage returns true → token recovered from CCT
     TestBed.createComponent(SyncComponent);
     handleRedirectCallbackSpy.mockClear();
-    refreshFromStorageSpy.mockClear();
 
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
 
-    expect(refreshFromStorageSpy).toHaveBeenCalledTimes(1);
-    // Token already found — no need to check the URL hash
+    // Not called immediately — the new flow waits for Android intent navigation to settle
     expect(handleRedirectCallbackSpy).not.toHaveBeenCalled();
-    vi.useRealTimers();
+
+    // Called after the 300ms settling delay
+    vi.advanceTimersByTime(300);
+    expect(handleRedirectCallbackSpy).toHaveBeenCalledTimes(1);
+    expect(handleRedirectCallbackSpy).toHaveBeenCalledWith(true);
   });
 
-  it('does not call refreshFromStorage or handleRedirectCallback when the page becomes hidden', () => {
+  it('calls resetToIdle() after the URL-check delay if user dismissed the auth page', () => {
+    vi.useFakeTimers();
+    buildModule(false);
+    TestBed.createComponent(SyncComponent);
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    // resetToIdle fires after 300ms settling + 1500ms retry guard
+    vi.advanceTimersByTime(1800);
+    expect(resetToIdleSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips visibilitychange callbacks when already connected', () => {
+    vi.useFakeTimers();
+    buildModule(true); // already connected
+    TestBed.createComponent(SyncComponent);
+    handleRedirectCallbackSpy.mockClear();
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    vi.advanceTimersByTime(2000);
+    // No callbacks fired because the guard `!isConnected()` is false
+    expect(handleRedirectCallbackSpy).not.toHaveBeenCalled();
+    expect(resetToIdleSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not call handleRedirectCallback when the page becomes hidden', () => {
     vi.useFakeTimers();
     buildModule();
     TestBed.createComponent(SyncComponent);
     handleRedirectCallbackSpy.mockClear();
-    refreshFromStorageSpy.mockClear();
 
     Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
 
-    expect(refreshFromStorageSpy).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(2000);
     expect(handleRedirectCallbackSpy).not.toHaveBeenCalled();
-    vi.useRealTimers();
   });
 
   it('removes the visibilitychange listener when the component is destroyed', () => {
@@ -147,17 +124,15 @@ describe('SyncComponent', () => {
     buildModule();
     const fixture = TestBed.createComponent(SyncComponent);
     handleRedirectCallbackSpy.mockClear();
-    refreshFromStorageSpy.mockClear();
+    resetToIdleSpy.mockClear();
 
     fixture.destroy();
 
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
 
-    expect(refreshFromStorageSpy).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(2000);
     expect(handleRedirectCallbackSpy).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(500); // ensure no delayed retry fires after destroy
-    expect(refreshFromStorageSpy).not.toHaveBeenCalled();
-    vi.useRealTimers();
+    expect(resetToIdleSpy).not.toHaveBeenCalled();
   });
 });

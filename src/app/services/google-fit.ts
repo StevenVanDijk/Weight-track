@@ -59,19 +59,20 @@ export class GoogleFitService {
   }
 
   /**
-   * The redirect URI used for the OAuth redirect flow (standalone PWA mode).
+   * The redirect URI used for the PKCE OAuth flow (standalone PWA mode).
    * Must be added as an Authorised redirect URI in Google Cloud Console.
    *
-   * Points to /oauth.html rather than /sync directly.  On Android the OAuth
-   * redirect lands in a Chrome Custom Tab (CCT); /oauth.html reads the token
-   * from the URL hash (still intact inside the CCT) and immediately redirects
-   * to /sync?access_token=...  Android's intent system preserves query
-   * parameters when handing the URL back to the installed PWA, whereas hash
-   * fragments are stripped.  This two-step redirect ensures the token reaches
-   * the PWA reliably.
+   * Points directly to /sync.  When Google completes authentication it redirects
+   * to /sync?code=...&state=...  Android's intent system intercepts this URL
+   * (it is within the PWA's scope), closes the Chrome Custom Tab, and navigates
+   * the WebAPK WebView to /sync?code=... — the authorization code arrives in the
+   * URL query string, which survives Android intent routing unlike hash fragments.
+   * The PWA then exchanges the code for a token locally using the stored PKCE
+   * code_verifier.  No cross-context storage (localStorage / BroadcastChannel)
+   * is required, bypassing Chrome's storage partitioning entirely.
    */
   get redirectUri(): string {
-    return window.location.origin + '/oauth.html';
+    return window.location.origin + '/sync';
   }
 
   async connect(): Promise<void> {
@@ -129,66 +130,37 @@ export class GoogleFitService {
     this._message.set('Opening Google sign-in…');
 
     try {
-      this.log('info', 'connect', 'Loading Google Identity Services (GSI) script…',
-        'Expected: script loads from https://accounts.google.com/gsi/client without CSP or network errors');
-      await this.loadGsiScript();
-      this.log('info', 'connect', 'GSI script ready — google.accounts.oauth2 API available');
-
       const standalone = this.isStandalonePwa();
       this.log('info', 'connect',
         `Flow selection — isStandalonePwa: ${standalone}`,
         standalone
-          ? 'Expected flow: redirect (popup.opener is null in standalone mode). Will navigate away to Google, return via /oauth.html.'
-          : 'Expected flow: popup (window.opener available in browser tab). Token returned directly to callback.'
+          ? 'Expected flow: PKCE Authorization Code (no GIS library needed). PWA navigates to Google, returns via /sync?code=...'
+          : 'Expected flow: GIS popup (window.opener available in browser tab). Token returned directly to callback.'
       );
 
       if (standalone) {
-        // In standalone PWA mode the popup's window.opener is null so GIS cannot
-        // post the token back. Use redirect flow instead — the page navigates away
-        // and handleRedirectCallback() picks up the token on return.
+        // PKCE Authorization Code Flow for standalone PWA mode.
         //
-        // On Android the redirect opens in a Chrome Custom Tab (CCT); on iOS it may
-        // open in Safari.  In both cases the redirect context boots a fresh Angular
-        // instance that processes the token and then broadcasts it via
-        // BroadcastChannel so the standing PWA context can pick it up without
-        // relying solely on shared localStorage.
-        this.log('info', 'connect', 'Standalone PWA mode confirmed — setting up BroadcastChannel listener before redirect');
-        try {
-          const ch = new BroadcastChannel('gfit-oauth');
-          ch.onmessage = ({ data }: MessageEvent<{ accessToken: string; expiresIn: number }>) => {
-            ch.close();
-            if (data?.accessToken) {
-              this.log('info', 'connect',
-                `Token received via BroadcastChannel — expires in ${data.expiresIn}s`,
-                `Expected: accessToken string in payload. Actual: received ${typeof data.accessToken} of length ${(data.accessToken as string).length}`
-              );
-              this.persistToken(data.accessToken, data.expiresIn);
-              this._status.set('idle');
-              this._message.set('Connected to Google Fit.');
-            } else {
-              this.log('warn', 'connect',
-                'BroadcastChannel message received but no accessToken in payload',
-                `Expected: { accessToken: string, expiresIn: number }. Actual: ${JSON.stringify(data)}`
-              );
-            }
-          };
-          this.log('info', 'connect', 'BroadcastChannel listener registered on "gfit-oauth"',
-            'Expected: listener will fire when /oauth.html broadcasts the token after Google redirect');
-        } catch (bcErr) {
-          this.log('warn', 'connect',
-            `BroadcastChannel setup failed: ${bcErr instanceof Error ? bcErr.message : String(bcErr)}`,
-            'Expected: BroadcastChannel constructor to succeed. Will fall back to refreshFromStorage() on visibilitychange.'
-          );
-        }
-        this.log('info', 'connect',
-          `Starting redirect flow — redirect_uri: ${this.redirectUri}`,
-          `Expected: browser navigates to Google OAuth endpoint. Client ID suffix: "…${clientId.slice(-20)}". Scopes: "${SCOPES}". After Google auth, browser redirects to ${this.redirectUri}.`
-        );
-        this.startRedirectFlow(clientId);
-        // Execution stops here; the browser navigates to Google.
+        // Previous approaches (GIS redirect + /oauth.html bridge) failed because
+        // Chrome 115+ applies storage partitioning: the Chrome Custom Tab (CCT)
+        // that handled the redirect ran in a separate storage context, so any
+        // localStorage writes or BroadcastChannel messages from the CCT were
+        // invisible to the PWA.
+        //
+        // PKCE fix: Google redirects to /sync?code=...&state=... (query params,
+        // not a hash fragment).  Android's intent system intercepts this in-scope
+        // URL, closes the CCT, and navigates the WebAPK WebView to the new URL.
+        // The PWA reads ?code= from window.location.search — no cross-context
+        // storage involved — and exchanges it for a token via Google's token
+        // endpoint using the locally-stored PKCE code_verifier.
+        this.log('info', 'connect', 'Standalone PWA — starting PKCE Authorization Code flow',
+          `redirect_uri: "${this.redirectUri}" must be registered in Cloud Console → Credentials → Authorised redirect URIs.`);
+        await this.startPkceFlow(clientId);
+        // window.location.href was set inside startPkceFlow(); execution stops here.
       } else {
         this.log('info', 'connect', 'Browser mode — requesting token via GIS popup',
           'Expected: popup window opens at accounts.google.com. User signs in. Callback receives access_token.');
+        await this.loadGsiScript();
         const { token, expiresIn } = await this.requestTokenViaPopup(clientId);
         this.log('info', 'connect',
           `Token obtained via popup — length: ${token.length}, expires_in: ${expiresIn}s`,
@@ -272,6 +244,20 @@ export class GoogleFitService {
       } else {
         this._message.set(`Google sign-in failed: ${errorCode}`);
       }
+      return;
+    }
+
+    // PKCE Authorization Code Flow: ?code= arrives as a query parameter.
+    // Detected before implicit-flow access_token check.
+    const code = searchParams.get('code');
+    if (code) {
+      const state = searchParams.get('state') ?? '';
+      this.log('info', 'oauth-cb',
+        `PKCE authorization code detected — length: ${code.length}, state length: ${state.length}`,
+        `Expected: code exchanged for access token via POST /token with stored code_verifier. Cleaning URL.`
+      );
+      history.replaceState(null, '', window.location.pathname);
+      await this.exchangeCodeForToken(code, state);
       return;
     }
 
@@ -954,6 +940,177 @@ export class GoogleFitService {
         'Expected: GIS opens popup window at accounts.google.com. If nothing happens, the browser may have blocked the popup (must be triggered by a user gesture).');
       tokenClient.requestAccessToken({ prompt: '' });
     });
+  }
+
+  /**
+   * Resets status from 'connecting' to 'idle'.
+   * Called by SyncComponent when the user returns from the auth page without
+   * completing the flow (e.g. dismisses Google sign-in).
+   */
+  resetToIdle(): void {
+    if (this._status() === 'connecting') {
+      this.log('info', 'connect', 'resetToIdle() — user returned without completing auth, resetting to idle');
+      this._status.set('idle');
+      this._message.set('');
+    }
+  }
+
+  /**
+   * Exchanges a PKCE authorization code for an access token.
+   * Called by handleRedirectCallback() or SyncComponent when ?code= appears in
+   * the URL after Android brings the PWA to the foreground.
+   */
+  async exchangeCodeForToken(code: string, state: string): Promise<void> {
+    if (this._accessToken()) {
+      this.log('info', 'pkce', 'exchangeCodeForToken skipped — already connected');
+      return;
+    }
+    this.log('info', 'pkce', `exchangeCodeForToken() called — code length: ${code.length}`);
+    const storedState = localStorage.getItem('gfit_pkce_state');
+    const verifier = localStorage.getItem('gfit_pkce_verifier');
+
+    if (!storedState || state !== storedState) {
+      this.log('error', 'pkce',
+        `State mismatch — stored: "${storedState ?? 'null'}", received: "${state}"`,
+        'Expected: state values match (CSRF protection). Actual: mismatch. This may indicate a forged redirect or stale PKCE session. Aborting.'
+      );
+      this._status.set('error');
+      this._message.set('Sign-in failed: security check failed (state mismatch). Please try again.');
+      return;
+    }
+
+    if (!verifier) {
+      this.log('error', 'pkce', 'code_verifier not found in localStorage',
+        'Expected: gfit_pkce_verifier set before navigation. Actual: missing. localStorage may have been cleared during auth flow.');
+      this._status.set('error');
+      this._message.set('Sign-in failed: PKCE verifier missing. Please try again.');
+      return;
+    }
+
+    const clientId = this._settings().clientId;
+    this.log('info', 'pkce',
+      `Exchanging code for token — POST https://oauth2.googleapis.com/token`,
+      `client_id: "…${clientId.slice(-20)}", redirect_uri: "${this.redirectUri}", code_verifier length: ${verifier.length}. ` +
+      `No client_secret needed (PKCE). Expected: 200 with { access_token, expires_in, token_type }.`
+    );
+
+    this._status.set('connecting');
+    this._message.set('Completing sign-in…');
+
+    try {
+      const res = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: clientId,
+          redirect_uri: this.redirectUri,
+          code_verifier: verifier,
+          grant_type: 'authorization_code',
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.access_token) {
+        const errCode = data.error ?? `HTTP ${res.status}`;
+        const errDesc = data.error_description ?? '(no description)';
+        this.log('error', 'pkce',
+          `Token exchange failed — ${errCode}: ${errDesc}`,
+          `Full response: ${JSON.stringify(data)}. ` +
+          (errCode === 'invalid_grant'
+            ? 'The authorization code has expired or already been used. Codes are single-use and expire in seconds. Try connecting again.'
+            : errCode === 'redirect_uri_mismatch'
+            ? `The redirect_uri "${this.redirectUri}" must match exactly what was used in the auth request AND be registered in Cloud Console.`
+            : errCode === 'invalid_client'
+            ? 'Client ID not recognised or does not support PKCE. Ensure OAuth client type is "Web application" in Cloud Console.'
+            : `See https://developers.google.com/identity/protocols/oauth2/web-server#authorization-errors`)
+        );
+        this._status.set('error');
+        this._message.set(errCode === 'invalid_grant'
+          ? 'Sign-in code expired — please try connecting again.'
+          : `Sign-in failed: ${errDesc || errCode}`
+        );
+        return;
+      }
+
+      const expiresIn = Number(data.expires_in ?? 3599);
+      this.log('info', 'pkce',
+        `Token exchange succeeded — expires_in: ${expiresIn}s, token_type: "${data.token_type}"`,
+        `scope: "${data.scope ?? '(not returned)'}". Expected: access_token present, token_type="Bearer", expires_in~3599.`
+      );
+
+      this.persistToken(data.access_token as string, expiresIn);
+      this._status.set('idle');
+      this._message.set('Connected to Google Fit.');
+
+      localStorage.removeItem('gfit_pkce_verifier');
+      localStorage.removeItem('gfit_pkce_state');
+      this.log('info', 'pkce', 'PKCE verifier/state cleaned from localStorage');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.log('error', 'pkce', `Token exchange network error: ${msg}`,
+        'Expected: fetch to succeed. Check internet connectivity and that Google APIs are not blocked.');
+      this._status.set('error');
+      this._message.set('Sign-in failed: could not reach Google servers. Check your connection and try again.');
+    }
+  }
+
+  /** Generates a PKCE code_verifier and code_challenge pair using Web Crypto. */
+  private async generatePkce(): Promise<{ verifier: string; challenge: string }> {
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    const verifier = btoa(String.fromCharCode(...Array.from(array)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(verifier));
+    const challenge = btoa(String.fromCharCode(...Array.from(new Uint8Array(hashBuffer))))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    return { verifier, challenge };
+  }
+
+  /** Generates a random opaque state value for CSRF protection. */
+  private generateState(): string {
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    return btoa(String.fromCharCode(...Array.from(array)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  }
+
+  /**
+   * PKCE Authorization Code Flow for standalone PWA:
+   * generates PKCE params, saves them to localStorage, then navigates to Google's
+   * auth page.  Google redirects to /sync?code=...&state=...  Android's intent
+   * system intercepts the in-scope URL, closes the CCT, and navigates the WebAPK
+   * WebView to /sync?code=... so handleRedirectCallback() can read the code
+   * directly from window.location.search — no cross-context storage involved.
+   */
+  private async startPkceFlow(clientId: string): Promise<void> {
+    const pkce = await this.generatePkce();
+    const state = this.generateState();
+
+    localStorage.setItem('gfit_pkce_verifier', pkce.verifier);
+    localStorage.setItem('gfit_pkce_state', state);
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: this.redirectUri,
+      scope: SCOPES,
+      code_challenge: pkce.challenge,
+      code_challenge_method: 'S256',
+      state,
+      access_type: 'online',
+    });
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+
+    this.log('info', 'pkce',
+      `PKCE flow ready — navigating to Google auth`,
+      `redirect_uri: "${this.redirectUri}". code_challenge_method: S256. ` +
+      `Expected: Google redirects to "${this.redirectUri}?code=...&state=..." — Android intent closes CCT, ` +
+      `navigates WebAPK to /sync?code=..., handleRedirectCallback() exchanges code for token.`
+    );
+    window.location.href = authUrl;
   }
 
   /** Redirect flow (standalone PWA): navigates the page to Google's auth endpoint. */
