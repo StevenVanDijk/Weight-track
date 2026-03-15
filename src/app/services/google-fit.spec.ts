@@ -13,6 +13,12 @@ describe('GoogleFitService', () => {
 
   beforeEach(() => {
     localStorage.clear();
+    // matchMedia is not available in jsdom; stub it so logEnvironment() and
+    // isStandalonePwa() don't throw in tests that call connect().
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockReturnValue({ matches: false }),
+    });
     TestBed.configureTestingModule({});
     service = TestBed.inject(GoogleFitService);
   });
@@ -20,6 +26,7 @@ describe('GoogleFitService', () => {
   afterEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   // ---------------------------------------------------------------------------
@@ -127,8 +134,8 @@ describe('GoogleFitService', () => {
   // redirectUri
   // ---------------------------------------------------------------------------
 
-  it('redirectUri is origin + /oauth.html', () => {
-    expect(service.redirectUri).toBe(window.location.origin + '/oauth.html');
+  it('redirectUri is origin + /sync', () => {
+    expect(service.redirectUri).toBe(window.location.origin + '/sync');
   });
 
   // ---------------------------------------------------------------------------
@@ -1274,6 +1281,220 @@ describe('GoogleFitService', () => {
       service.clearLogs();
       // Simulate the cap by checking that clearLogs produces 0 entries.
       expect(service.logs().length).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // PKCE Authorization Code Flow
+  // ---------------------------------------------------------------------------
+
+  describe('PKCE flow', () => {
+    beforeEach(() => {
+      localStorage.clear();
+      // Provide a client ID so connect() proceeds past the guard
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: 'test-client.apps.googleusercontent.com',
+        lastSyncDate: null,
+        syncedEntryIds: [],
+        accessToken: null,
+        tokenExpiry: null,
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      service = TestBed.inject(GoogleFitService);
+    });
+
+    it('redirectUri points to /sync', () => {
+      expect(service.redirectUri).toBe(window.location.origin + '/sync');
+    });
+
+    it('connect() in standalone PWA saves pkce verifier and state to localStorage then navigates', async () => {
+      Object.defineProperty(window, 'matchMedia', {
+        writable: true,
+        value: vi.fn().mockReturnValue({ matches: true }), // standalone mode
+      });
+      const hrefSpy = vi.spyOn(window.location, 'href', 'set');
+
+      await service.connect();
+
+      expect(localStorage.getItem('gfit_pkce_verifier')).not.toBeNull();
+      expect(localStorage.getItem('gfit_pkce_state')).not.toBeNull();
+      expect(hrefSpy).toHaveBeenCalledWith(expect.stringContaining('accounts.google.com/o/oauth2/v2/auth'));
+      expect(hrefSpy).toHaveBeenCalledWith(expect.stringContaining('code_challenge_method=S256'));
+      expect(hrefSpy).toHaveBeenCalledWith(expect.stringContaining('response_type=code'));
+    });
+
+    it('connect() in standalone PWA includes redirect_uri=/sync in auth URL', async () => {
+      Object.defineProperty(window, 'matchMedia', {
+        writable: true,
+        value: vi.fn().mockReturnValue({ matches: true }),
+      });
+      const hrefSpy = vi.spyOn(window.location, 'href', 'set');
+
+      await service.connect();
+
+      const calledHref: string = hrefSpy.mock.calls[0][0];
+      const queryPart = calledHref.split('?')[1] ?? '';
+      const params = new URLSearchParams(queryPart);
+      expect(params.get('redirect_uri')).toBe(window.location.origin + '/sync');
+    });
+
+    it('exchangeCodeForToken succeeds and sets connected state', async () => {
+      const state = 'test-state';
+      localStorage.setItem('gfit_pkce_state', state);
+      localStorage.setItem('gfit_pkce_verifier', 'test-verifier');
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({ access_token: 'new-token', expires_in: 3599, token_type: 'Bearer' }),
+          { status: 200 }
+        )
+      );
+
+      await service.exchangeCodeForToken('auth-code-123', state);
+
+      expect(service.isConnected()).toBe(true);
+      expect(service.settings().accessToken).toBe('new-token');
+      expect(service.status()).toBe('idle');
+      expect(service.message()).toBe('Connected to Google Fit.');
+    });
+
+    it('exchangeCodeForToken cleans up PKCE state from localStorage on success', async () => {
+      const state = 'test-state';
+      localStorage.setItem('gfit_pkce_state', state);
+      localStorage.setItem('gfit_pkce_verifier', 'test-verifier');
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({ access_token: 'tok', expires_in: 3599 }),
+          { status: 200 }
+        )
+      );
+
+      await service.exchangeCodeForToken('code', state);
+
+      expect(localStorage.getItem('gfit_pkce_verifier')).toBeNull();
+      expect(localStorage.getItem('gfit_pkce_state')).toBeNull();
+    });
+
+    it('exchangeCodeForToken fails with error status when state mismatches', async () => {
+      localStorage.setItem('gfit_pkce_state', 'expected-state');
+      localStorage.setItem('gfit_pkce_verifier', 'verifier');
+
+      await service.exchangeCodeForToken('code', 'wrong-state');
+
+      expect(service.isConnected()).toBe(false);
+      expect(service.status()).toBe('error');
+      expect(service.message()).toContain('state mismatch');
+    });
+
+    it('exchangeCodeForToken fails when verifier is missing from localStorage', async () => {
+      localStorage.setItem('gfit_pkce_state', 'state');
+      // No verifier set
+
+      await service.exchangeCodeForToken('code', 'state');
+
+      expect(service.isConnected()).toBe(false);
+      expect(service.status()).toBe('error');
+      expect(service.message()).toContain('verifier missing');
+    });
+
+    it('exchangeCodeForToken handles invalid_grant error from token endpoint', async () => {
+      const state = 'state';
+      localStorage.setItem('gfit_pkce_state', state);
+      localStorage.setItem('gfit_pkce_verifier', 'verifier');
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: 'invalid_grant', error_description: 'Code expired' }),
+          { status: 400 }
+        )
+      );
+
+      await service.exchangeCodeForToken('stale-code', state);
+
+      expect(service.isConnected()).toBe(false);
+      expect(service.status()).toBe('error');
+      expect(service.message()).toContain('expired');
+    });
+
+    it('exchangeCodeForToken handles network failure', async () => {
+      const state = 'state';
+      localStorage.setItem('gfit_pkce_state', state);
+      localStorage.setItem('gfit_pkce_verifier', 'verifier');
+
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Network error'));
+
+      await service.exchangeCodeForToken('code', state);
+
+      expect(service.isConnected()).toBe(false);
+      expect(service.status()).toBe('error');
+      expect(service.message()).toContain('could not reach Google servers');
+    });
+
+    it('exchangeCodeForToken is a no-op when already connected', async () => {
+      const state = 'state';
+      localStorage.setItem('gfit_pkce_state', state);
+      localStorage.setItem('gfit_pkce_verifier', 'verifier');
+      // Pre-load a valid token
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: 'c',
+        lastSyncDate: null,
+        syncedEntryIds: [],
+        accessToken: 'existing-token',
+        tokenExpiry: Date.now() + 3_600_000,
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const connected = TestBed.inject(GoogleFitService);
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await connected.exchangeCodeForToken('code', state);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('handleRedirectCallback() detects ?code= and calls exchangeCodeForToken', async () => {
+      const state = 'test-state-456';
+      localStorage.setItem('gfit_pkce_state', state);
+      localStorage.setItem('gfit_pkce_verifier', 'verifier');
+
+      Object.defineProperty(window, 'location', {
+        writable: true,
+        value: { ...window.location, search: `?code=auth-code&state=${state}`, hash: '', pathname: '/sync' },
+      });
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({ access_token: 'tok-from-cb', expires_in: 3599 }),
+          { status: 200 }
+        )
+      );
+      vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+
+      await service.handleRedirectCallback();
+
+      expect(service.isConnected()).toBe(true);
+    });
+
+    it('resetToIdle() sets status to idle when connecting', async () => {
+      // Manually put the service in connecting state
+      Object.defineProperty(window, 'matchMedia', {
+        writable: true,
+        value: vi.fn().mockReturnValue({ matches: true }),
+      });
+      vi.spyOn(window.location, 'href', 'set').mockImplementation(() => {});
+      await service.connect();
+
+      service.resetToIdle();
+
+      expect(service.status()).toBe('idle');
+    });
+
+    it('resetToIdle() is a no-op when not connecting', () => {
+      expect(service.status()).toBe('idle');
+      service.resetToIdle(); // should not throw or change anything
+      expect(service.status()).toBe('idle');
     });
   });
 });

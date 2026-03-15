@@ -292,9 +292,10 @@
 - **US-180** As a user, tapping "Connect" when already authenticated with a valid token is a no-op so that I am not prompted to sign in unnecessarily.
 - **US-181** As a user, when a sync operation receives a 401 Unauthorized response, the app attempts a silent token refresh and retries the operation once so that transient expiry during an active session is handled transparently (browser mode only; standalone PWA falls back to manual reconnect).
 - **US-182** As a user, tapping "Disconnect" removes the persisted token from storage so that the next app start begins in a disconnected state.
-- **US-191** As a user on Android standalone PWA, the OAuth redirect page (`oauth.html`) parses the access token from the URL hash and persists it to localStorage before redirecting, so that the token survives the Chrome Custom Tab → PWA handoff even when the CCT closes before Angular can bootstrap.
-- **US-192** As a user on Android standalone PWA, the OAuth redirect page broadcasts the token via BroadcastChannel before redirecting, providing a secondary delivery mechanism in case localStorage is partitioned between the CCT and PWA contexts.
-- **US-193** As a user on Android standalone PWA, after returning from the OAuth flow the app retries reading the token from localStorage after a short delay, handling the race condition where the CCT writes the token just as the PWA resumes.
+- **US-191** As a user on Android standalone PWA, the app uses PKCE Authorization Code Flow (`response_type=code`) so that the authorization code arrives as a URL query parameter — not a hash fragment — surviving Android's intent routing without any cross-context storage relay.
+- **US-192** As a user on Android standalone PWA, when Google redirects to `/sync?code=...&state=...`, Android closes the Chrome Custom Tab and navigates the WebAPK WebView to `/sync?code=...` so the app reads the code directly from `window.location.search`.
+- **US-193** As a user on Android standalone PWA, the app stores a PKCE `code_verifier` and `state` in localStorage before navigating to Google, then exchanges the returned code for an access token via a direct POST to Google's token endpoint — bypassing Chrome's storage partitioning entirely.
+- **US-194** As a user on Android standalone PWA, if I return from the Google auth page without completing sign-in, the app resets from "Connecting…" to idle after a short delay so that the Connect button becomes available again.
 - **US-183** As a user, the Google Fit settings (including any persisted token) are backed up to IndexedDB and restored from there if localStorage is cleared, consistent with all other durable app state.
 
 ### 13.3 Import from Google Fit

@@ -21,36 +21,30 @@ class SyncComponent {
   constructor() {
     // Pre-fill the input with any saved client ID
     this.clientIdInput.set(this.gfit.settings().clientId);
-    // If returning from the OAuth redirect flow (standalone PWA), pick up the token.
+
+    // If returning from the PKCE OAuth redirect (/sync?code=...) or a legacy
+    // implicit-flow redirect, pick up the token from the current URL.
     this.gfit.handleRedirectCallback();
 
-    // On Android PWA the OAuth redirect opens in a Chrome Custom Tab (CCT)
-    // while the app stays alive in the background.  The CCT boots a fresh
-    // Angular instance that calls handleRedirectCallback() and persists the
-    // token to localStorage, then closes.  When the PWA comes back to the
-    // foreground the URL has NOT changed (no token in the hash), so we must
-    // first check localStorage for the token written by the CCT instance.
+    // On Android PWA, when Google redirects to /sync?code=... after auth,
+    // Android's intent system closes the Chrome Custom Tab and navigates the
+    // WebAPK WebView to the new URL.  This may trigger either a full page
+    // reload (constructor fires fresh — handled above) or a visibilitychange
+    // event while the app is already running.  In the latter case we wait a
+    // short period for window.location to update, then re-run the callback.
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        const found = this.gfit.refreshFromStorage();
-        if (!found) {
-          // Pass fromVisibilityChange=true so that a missing token in the URL
-          // resets status to idle rather than showing a misleading error.
-          // The BroadcastChannel listener set up in connect() will update state
-          // if the token arrives from a CCT or external browser context.
-          this.gfit.handleRedirectCallback(true);
-
-          // The oauth.html page in the CCT writes the token to localStorage
-          // just before redirecting to /sync.  On Android, the redirect
-          // brings the PWA to the foreground almost simultaneously, so
-          // localStorage may not yet reflect the write.  Retry after a
-          // short delay to handle this race condition.
+      if (document.visibilityState === 'visible' && !this.gfit.isConnected()) {
+        // Allow the Android intent navigation to settle before reading the URL.
+        setTimeout(() => {
+          if (!this.gfit.isConnected()) {
+            this.gfit.handleRedirectCallback(true);
+          }
+          // If still connecting after the URL check (user dismissed auth),
+          // reset to idle so the Connect button becomes active again.
           setTimeout(() => {
-            if (!this.gfit.isConnected()) {
-              this.gfit.refreshFromStorage();
-            }
-          }, 500);
-        }
+            this.gfit.resetToIdle();
+          }, 1500);
+        }, 300);
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
