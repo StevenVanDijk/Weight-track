@@ -127,8 +127,8 @@ describe('GoogleFitService', () => {
   // redirectUri
   // ---------------------------------------------------------------------------
 
-  it('redirectUri is origin + /sync', () => {
-    expect(service.redirectUri).toBe(window.location.origin + '/sync');
+  it('redirectUri is origin + /oauth.html', () => {
+    expect(service.redirectUri).toBe(window.location.origin + '/oauth.html');
   });
 
   // ---------------------------------------------------------------------------
@@ -265,6 +265,131 @@ describe('GoogleFitService', () => {
     expect(service.status()).toBe('idle');
     await service.handleRedirectCallback();
     expect(service.status()).toBe('idle');
+  });
+
+  // ---------------------------------------------------------------------------
+  // handleRedirectCallback — token in search params (via /oauth.html bridge)
+  // The /oauth.html bridge page converts the hash to query params so the token
+  // survives Android's intent-based handoff to the installed PWA.
+  // ---------------------------------------------------------------------------
+
+  it('handleRedirectCallback parses access_token from search params (oauth.html bridge path)', async () => {
+    service.setClientId('test-client-id.apps.googleusercontent.com');
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        hash: '',
+        search: '?access_token=ya29.query-token&token_type=Bearer&expires_in=3599',
+        pathname: '/sync',
+      },
+      configurable: true,
+    });
+    vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+
+    await service.handleRedirectCallback();
+
+    expect(service.isConnected()).toBe(true);
+    expect(service.status()).toBe('idle');
+    expect(service.message()).toContain('Connected');
+    expect(history.replaceState).toHaveBeenCalledWith(null, '', '/sync');
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '', search: '' },
+      configurable: true,
+    });
+  });
+
+  it('handleRedirectCallback persists token from search params to localStorage', async () => {
+    service.setClientId('test-client-id.apps.googleusercontent.com');
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        hash: '',
+        search: '?access_token=ya29.query-token&token_type=Bearer&expires_in=3600',
+        pathname: '/sync',
+      },
+      configurable: true,
+    });
+    vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+
+    await service.handleRedirectCallback();
+
+    const raw = JSON.parse(localStorage.getItem('weight_google_fit')!);
+    expect(raw.accessToken).toBe('ya29.query-token');
+    expect(raw.tokenExpiry).toBeGreaterThan(Date.now());
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '', search: '' },
+      configurable: true,
+    });
+  });
+
+  it('handleRedirectCallback prefers hash token over search-param token when both are present', async () => {
+    service.setClientId('test-client-id.apps.googleusercontent.com');
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        hash: '#access_token=ya29.hash-token&expires_in=3599',
+        search: '?access_token=ya29.search-token&expires_in=3599',
+        pathname: '/sync',
+      },
+      configurable: true,
+    });
+    vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+
+    await service.handleRedirectCallback();
+
+    expect(service.settings().accessToken).toBe('ya29.hash-token');
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '', search: '' },
+      configurable: true,
+    });
+  });
+
+  it('handleRedirectCallback treats error in search params as OAuth failure', async () => {
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        hash: '',
+        search: '?error=server_error',
+        pathname: '/sync',
+      },
+      configurable: true,
+    });
+    vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+
+    await service.handleRedirectCallback();
+
+    expect(service.status()).toBe('error');
+    expect(service.message()).toContain('server_error');
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '', search: '' },
+      configurable: true,
+    });
+  });
+
+  it('handleRedirectCallback does nothing when search has no access_token and hash is empty', async () => {
+    Object.defineProperty(window, 'location', {
+      value: {
+        ...window.location,
+        hash: '',
+        search: '?unrelated=param',
+        pathname: '/sync',
+      },
+      configurable: true,
+    });
+
+    await service.handleRedirectCallback();
+
+    expect(service.isConnected()).toBe(false);
+    expect(service.status()).toBe('idle');
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '', search: '' },
+      configurable: true,
+    });
   });
 
   it('handleRedirectCallback sets error status for access_denied in URL hash', async () => {
