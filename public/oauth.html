@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Completing sign-in…</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #1a1a2e;
+      color: #ccc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <p>Completing sign-in…</p>
+  <script>
+    (function () {
+      // Google's implicit grant returns the access token in the URL hash
+      // (e.g. /oauth.html#access_token=TOKEN&expires_in=3599&...).
+      //
+      // On Android, the intent system strips hash fragments when handing a URL
+      // back to an installed PWA.  This page runs inside the Chrome Custom Tab
+      // that handled the OAuth redirect, reads the hash while it is still
+      // intact, and converts it to query parameters before redirecting to the
+      // app's /sync route.  Android preserves query parameters when routing a
+      // URL to an installed PWA, so the access token survives the handoff.
+      var hash = window.location.hash.slice(1); // strip leading '#'
+      window.location.replace('/sync' + (hash ? '?' + hash : ''));
+    }());
+  </script>
+</body>
+</html>

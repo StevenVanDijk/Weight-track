@@ -61,9 +61,17 @@ export class GoogleFitService {
   /**
    * The redirect URI used for the OAuth redirect flow (standalone PWA mode).
    * Must be added as an Authorised redirect URI in Google Cloud Console.
+   *
+   * Points to /oauth.html rather than /sync directly.  On Android the OAuth
+   * redirect lands in a Chrome Custom Tab (CCT); /oauth.html reads the token
+   * from the URL hash (still intact inside the CCT) and immediately redirects
+   * to /sync?access_token=...  Android's intent system preserves query
+   * parameters when handing the URL back to the installed PWA, whereas hash
+   * fragments are stripped.  This two-step redirect ensures the token reaches
+   * the PWA reliably.
    */
   get redirectUri(): string {
-    return window.location.origin + '/sync';
+    return window.location.origin + '/oauth.html';
   }
 
   async connect(): Promise<void> {
@@ -154,7 +162,14 @@ export class GoogleFitService {
     const search = window.location.search;
 
     const sanitizedHash = hash.replace(/access_token=[^&]+/, 'access_token=[REDACTED]');
-    this.log('info', 'oauth-cb', `handleRedirectCallback() — fromVisibilityChange: ${fromVisibilityChange}`, `hash: "${sanitizedHash}" search: "${search}"`);
+    const sanitizedSearch = search.replace(/access_token=[^&]+/, 'access_token=[REDACTED]');
+    this.log('info', 'oauth-cb', `handleRedirectCallback() — fromVisibilityChange: ${fromVisibilityChange}`, `hash: "${sanitizedHash}" search: "${sanitizedSearch}"`);
+
+    // Parse both sources: hash (direct PWA navigation) and search params
+    // (via /oauth.html bridge, which converts the hash to query params so the
+    // token survives Android's intent-based handoff to the installed PWA).
+    const hashParams = new URLSearchParams(hash.substring(1)); // strip leading '#'
+    const searchParams = new URLSearchParams(search.substring(1)); // strip leading '?'
 
     // Google returns errors either as a hash fragment or query parameter.
     const errorMatch = hash.match(/[#&]error=([^&]+)/) ?? search.match(/[?&]error=([^&]+)/);
@@ -175,7 +190,8 @@ export class GoogleFitService {
       return;
     }
 
-    if (!hash.includes('access_token')) {
+    const hasToken = hash.includes('access_token') || search.includes('access_token');
+    if (!hasToken) {
       this.log('info', 'oauth-cb', 'No access_token or error in URL');
       if (this._status() === 'connecting') {
         if (fromVisibilityChange) {
@@ -202,10 +218,11 @@ export class GoogleFitService {
       return;
     }
 
-    // Parse the access token and expiry directly from the hash fragment (OAuth 2.0 implicit flow).
-    const params = new URLSearchParams(hash.substring(1)); // strip leading '#'
-    const token = params.get('access_token');
-    const expiresIn = Number(params.get('expires_in') ?? '3599');
+    // Prefer hash (direct navigation); fall back to search params (via /oauth.html bridge).
+    const token = hashParams.get('access_token') ?? searchParams.get('access_token');
+    const expiresIn = Number(
+      hashParams.get('expires_in') ?? searchParams.get('expires_in') ?? '3599'
+    );
     if (token) {
       this.log('info', 'oauth-cb', `Token found in URL hash — expires_in: ${expiresIn}s`);
       this.persistToken(token, expiresIn);
