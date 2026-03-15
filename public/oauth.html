@@ -24,14 +24,59 @@
       // Google's implicit grant returns the access token in the URL hash
       // (e.g. /oauth.html#access_token=TOKEN&expires_in=3599&...).
       //
-      // On Android, the intent system strips hash fragments when handing a URL
-      // back to an installed PWA.  This page runs inside the Chrome Custom Tab
-      // that handled the OAuth redirect, reads the hash while it is still
-      // intact, and converts it to query parameters before redirecting to the
-      // app's /sync route.  Android preserves query parameters when routing a
-      // URL to an installed PWA, so the access token survives the handoff.
+      // This page runs inside the Chrome Custom Tab (CCT) that handled the
+      // OAuth redirect on Android.  On Android, navigating to a URL within
+      // the installed PWA's scope causes Android to bring the PWA to the
+      // foreground via an intent — but the CCT closes immediately, so no
+      // Angular code ever runs inside it.
+      //
+      // To work around this, we parse the token HERE (in plain JS), persist
+      // it to localStorage, and broadcast it via BroadcastChannel BEFORE
+      // redirecting.  When the PWA resumes it can pick up the token from
+      // either localStorage or the BroadcastChannel message.
+
       var hash = window.location.hash.slice(1); // strip leading '#'
-      window.location.replace('/sync' + (hash ? '?' + hash : ''));
+      if (!hash) {
+        // No hash fragment — nothing to process.  Redirect to /sync so the
+        // user at least lands on a meaningful page.
+        window.location.replace('/sync');
+        return;
+      }
+
+      var params = new URLSearchParams(hash);
+      var accessToken = params.get('access_token');
+      var expiresIn = Number(params.get('expires_in') || '3599');
+
+      if (accessToken) {
+        // Persist the token to localStorage so the PWA can pick it up via
+        // refreshFromStorage() when it comes to the foreground.
+        try {
+          var SETTINGS_KEY = 'weight_google_fit';
+          var raw = localStorage.getItem(SETTINGS_KEY);
+          var settings = raw ? JSON.parse(raw) : {};
+          var expiry = Date.now() + Math.max(0, expiresIn - 60) * 1000;
+          settings.accessToken = accessToken;
+          settings.tokenExpiry = expiry;
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        } catch (e) {
+          // localStorage unavailable — fall through to BroadcastChannel.
+        }
+
+        // Broadcast the token so the standing PWA context can pick it up
+        // even if localStorage is somehow partitioned.
+        try {
+          var ch = new BroadcastChannel('gfit-oauth');
+          ch.postMessage({ accessToken: accessToken, expiresIn: expiresIn });
+          ch.close();
+        } catch (e) {
+          // BroadcastChannel unavailable — token is already in localStorage.
+        }
+      }
+
+      // Redirect to /sync.  On Android this brings the installed PWA to the
+      // foreground.  The token is already persisted, so refreshFromStorage()
+      // will find it.
+      window.location.replace('/sync');
     }());
   </script>
 </body>

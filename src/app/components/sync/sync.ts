@@ -39,6 +39,17 @@ class SyncComponent {
           // The BroadcastChannel listener set up in connect() will update state
           // if the token arrives from a CCT or external browser context.
           this.gfit.handleRedirectCallback(true);
+
+          // The oauth.html page in the CCT writes the token to localStorage
+          // just before redirecting to /sync.  On Android, the redirect
+          // brings the PWA to the foreground almost simultaneously, so
+          // localStorage may not yet reflect the write.  Retry after a
+          // short delay to handle this race condition.
+          setTimeout(() => {
+            if (!this.gfit.isConnected()) {
+              this.gfit.refreshFromStorage();
+            }
+          }, 500);
         }
       }
     };
