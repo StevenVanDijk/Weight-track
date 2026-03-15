@@ -44,13 +44,15 @@ describe('SyncComponent', () => {
     vi.restoreAllMocks();
   });
 
-  it('calls handleRedirectCallback on construction', () => {
+  it('calls handleRedirectCallback on construction (no fromVisibilityChange arg)', () => {
     buildModule();
     TestBed.createComponent(SyncComponent);
     expect(handleRedirectCallbackSpy).toHaveBeenCalledTimes(1);
+    // Constructor call passes no argument (fromVisibilityChange defaults to false)
+    expect(handleRedirectCallbackSpy).toHaveBeenCalledWith();
   });
 
-  it('calls refreshFromStorage then handleRedirectCallback when the page becomes visible and no token in storage', () => {
+  it('calls refreshFromStorage then handleRedirectCallback(true) when the page becomes visible and no token in storage', () => {
     buildModule(false); // refreshFromStorage returns false → no token found in storage
     TestBed.createComponent(SyncComponent);
 
@@ -60,6 +62,8 @@ describe('SyncComponent', () => {
     expect(refreshFromStorageSpy).toHaveBeenCalledTimes(1);
     // handleRedirectCallback called once on construction + once after visibility change
     expect(handleRedirectCallbackSpy).toHaveBeenCalledTimes(2);
+    // The visibility-change call must pass fromVisibilityChange=true to avoid a false error
+    expect(handleRedirectCallbackSpy).toHaveBeenCalledWith(true);
   });
 
   it('skips handleRedirectCallback when refreshFromStorage finds a token in storage (CCT scenario)', () => {
