@@ -15,67 +15,219 @@
       min-height: 100vh;
       margin: 0;
     }
+    #status {
+      text-align: center;
+      max-width: 360px;
+      padding: 24px;
+    }
+    #status p { margin: 8px 0; font-size: 0.9rem; }
+    #status .detail { font-size: 0.75rem; color: #94a3b8; font-family: monospace; word-break: break-all; }
+    #status .error { color: #fca5a5; }
   </style>
 </head>
 <body>
-  <p>Completing sign-in…</p>
+  <div id="status">
+    <p>Completing sign-in…</p>
+  </div>
   <script>
     (function () {
-      // Google's implicit grant returns the access token in the URL hash
-      // (e.g. /oauth.html#access_token=TOKEN&expires_in=3599&...).
-      //
-      // This page runs inside the Chrome Custom Tab (CCT) that handled the
-      // OAuth redirect on Android.  On Android, navigating to a URL within
-      // the installed PWA's scope causes Android to bring the PWA to the
-      // foreground via an intent — but the CCT closes immediately, so no
-      // Angular code ever runs inside it.
-      //
-      // To work around this, we parse the token HERE (in plain JS), persist
-      // it to localStorage, and broadcast it via BroadcastChannel BEFORE
-      // redirecting.  When the PWA resumes it can pick up the token from
-      // either localStorage or the BroadcastChannel message.
+      var startTs = Date.now();
 
-      var hash = window.location.hash.slice(1); // strip leading '#'
-      if (!hash) {
-        // No hash fragment — nothing to process.  Redirect to /sync so the
-        // user at least lands on a meaningful page.
+      // -----------------------------------------------------------------------
+      // Structured logger — writes to console with context tags and also
+      // appends visible lines to the #status element for on-screen diagnosis.
+      // -----------------------------------------------------------------------
+      var logLines = [];
+      function log(level, context, message, detail) {
+        var ts = new Date().toISOString().slice(11, 23);
+        var line = '[' + ts + '][oauth.html][' + context + '] ' + message + (detail ? ' | ' + detail : '');
+        logLines.push({ level: level, line: line });
+        if (level === 'error') {
+          console.error(line);
+        } else if (level === 'warn') {
+          console.warn(line);
+        } else {
+          console.log(line);
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // Step 1 — Log environment
+      // -----------------------------------------------------------------------
+      log('info', 'init', 'oauth.html loaded',
+        'Expected: this page is loaded inside a Chrome Custom Tab (Android) or browser tab after Google OAuth redirect. ' +
+        'URL hash should contain access_token from Google.'
+      );
+
+      var href = window.location.href;
+      var hash = window.location.hash;
+      var search = window.location.search;
+      var sanitizedHash = hash.replace(/access_token=[^&]+/, 'access_token=[REDACTED]');
+      var sanitizedSearch = search.replace(/access_token=[^&]+/, 'access_token=[REDACTED]');
+
+      log('info', 'init',
+        'URL: pathname="' + window.location.pathname + '" hash(' + hash.length + ' chars)="' + sanitizedHash + '" search="' + sanitizedSearch + '"',
+        'Expected: hash contains #access_token=...&expires_in=3599&token_type=Bearer&scope=... ' +
+        'Actual hash length: ' + hash.length + ' chars. ' +
+        (hash.length === 0
+          ? 'WARNING: empty hash — Google may not have redirected here correctly, or the redirect_uri does not match this page.'
+          : 'Hash present — parsing parameters.')
+      );
+
+      log('info', 'init',
+        'navigator.onLine: ' + navigator.onLine + ' | cookieEnabled: ' + navigator.cookieEnabled,
+        'UA: ' + navigator.userAgent.substring(0, 120)
+      );
+
+      // -----------------------------------------------------------------------
+      // Step 2 — Parse hash fragment
+      // -----------------------------------------------------------------------
+      var rawHash = hash.slice(1); // strip leading '#'
+      if (!rawHash) {
+        log('warn', 'parse',
+          'No hash fragment — nothing to process',
+          'Expected: Google appends #access_token=...&expires_in=... to this redirect URI. ' +
+          'Actual: hash is empty. Possible causes: ' +
+          '(1) redirect_uri in your Cloud Console does not match "' + window.location.origin + '/oauth.html" exactly, ' +
+          '(2) user denied consent (error would appear in search params), ' +
+          '(3) this page was opened directly, not via an OAuth redirect.'
+        );
+        // Check for error in search params (some OAuth error responses use ?error=...)
+        var searchParams = new URLSearchParams(search.slice(1));
+        var errorCode = searchParams.get('error');
+        if (errorCode) {
+          log('error', 'parse',
+            'OAuth error in search params: "' + errorCode + '"',
+            'error_description: "' + (searchParams.get('error_description') || '(none)') + '". ' +
+            (errorCode === 'access_denied'
+              ? 'User denied consent or app is not verified. Add your Google account as a Test User in Cloud Console → OAuth consent screen → Test users.'
+              : 'See https://developers.google.com/identity/protocols/oauth2/web-server#authorization-errors')
+          );
+        }
+        log('info', 'redirect', 'Redirecting to /sync (no token to process)');
         window.location.replace('/sync');
         return;
       }
 
-      var params = new URLSearchParams(hash);
-      var accessToken = params.get('access_token');
-      var expiresIn = Number(params.get('expires_in') || '3599');
+      var params = new URLSearchParams(rawHash);
+      var allKeys = [];
+      params.forEach(function(v, k) { allKeys.push(k); });
+      log('info', 'parse',
+        'Hash parameter keys found: [' + allKeys.join(', ') + ']',
+        'Expected keys: [access_token, token_type, expires_in, scope]. ' +
+        'If access_token is missing but error is present, Google returned an error.'
+      );
 
-      if (accessToken) {
-        // Persist the token to localStorage so the PWA can pick it up via
-        // refreshFromStorage() when it comes to the foreground.
-        try {
-          var SETTINGS_KEY = 'weight_google_fit';
-          var raw = localStorage.getItem(SETTINGS_KEY);
-          var settings = raw ? JSON.parse(raw) : {};
-          var expiry = Date.now() + Math.max(0, expiresIn - 60) * 1000;
-          settings.accessToken = accessToken;
-          settings.tokenExpiry = expiry;
-          localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-        } catch (e) {
-          // localStorage unavailable — fall through to BroadcastChannel.
-        }
-
-        // Broadcast the token so the standing PWA context can pick it up
-        // even if localStorage is somehow partitioned.
-        try {
-          var ch = new BroadcastChannel('gfit-oauth');
-          ch.postMessage({ accessToken: accessToken, expiresIn: expiresIn });
-          ch.close();
-        } catch (e) {
-          // BroadcastChannel unavailable — token is already in localStorage.
-        }
+      var errorInHash = params.get('error');
+      if (errorInHash) {
+        log('error', 'parse',
+          'OAuth error in hash: "' + errorInHash + '"',
+          'error_description: "' + (params.get('error_description') || '(none)') + '". ' +
+          (errorInHash === 'access_denied'
+            ? 'User denied consent or app is not verified. Add your Google account as a Test User in Cloud Console → OAuth consent screen → Test users.'
+            : errorInHash === 'redirect_uri_mismatch'
+            ? 'redirect_uri "' + window.location.origin + '/oauth.html" is not registered. Add it to Cloud Console → Credentials → OAuth 2.0 Client ID → Authorised redirect URIs.'
+            : 'See Google OAuth error reference.')
+        );
+        window.location.replace('/sync');
+        return;
       }
 
-      // Redirect to /sync.  On Android this brings the installed PWA to the
-      // foreground.  The token is already persisted, so refreshFromStorage()
-      // will find it.
+      var accessToken = params.get('access_token');
+      var expiresIn = Number(params.get('expires_in') || '3599');
+      var tokenType = params.get('token_type') || '(not set)';
+      var scope = params.get('scope') || '(not set)';
+
+      log('info', 'parse',
+        'Parsed — accessToken: ' + (accessToken ? 'present (length ' + accessToken.length + ')' : 'MISSING') +
+        ', expires_in: ' + expiresIn + 's, token_type: "' + tokenType + '"',
+        'scope: "' + scope + '". ' +
+        (accessToken
+          ? (scope.indexOf('fitness.body') !== -1
+              ? 'Scope includes fitness.body — OK. token_type expected "Bearer" actual "' + tokenType + '"' + (tokenType === 'Bearer' ? ' — OK.' : ' — unexpected.')
+              : 'WARNING: scope "' + scope + '" does not include fitness.body. The app may not be able to read/write weight data.')
+          : 'CRITICAL: access_token is missing from the hash. The OAuth implicit grant should always return access_token. ' +
+            'Verify that the Client ID type is "Web application" (not Android/iOS/Desktop) and the Authorised redirect URI is set correctly.')
+      );
+
+      if (!accessToken) {
+        log('error', 'token', 'No access_token — cannot complete sign-in. Redirecting to /sync.',
+          'Expected: access_token in URL hash. Actual: null. The PWA will show a sign-in error.');
+        window.location.replace('/sync');
+        return;
+      }
+
+      // -----------------------------------------------------------------------
+      // Step 3 — Persist to localStorage
+      // -----------------------------------------------------------------------
+      var SETTINGS_KEY = 'weight_google_fit';
+      var lsWriteOk = false;
+      try {
+        var raw = localStorage.getItem(SETTINGS_KEY);
+        var settings = {};
+        if (raw) {
+          try { settings = JSON.parse(raw); } catch (parseErr) {
+            log('warn', 'storage',
+              'Failed to parse existing localStorage settings — starting fresh',
+              'Parse error: ' + parseErr + '. Existing raw value (first 100 chars): "' + raw.substring(0, 100) + '"'
+            );
+          }
+        }
+        var expiry = Date.now() + Math.max(0, expiresIn - 60) * 1000;
+        settings.accessToken = accessToken;
+        settings.tokenExpiry = expiry;
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        lsWriteOk = true;
+        log('info', 'storage',
+          'Token written to localStorage["' + SETTINGS_KEY + '"] — tokenExpiry: ' + new Date(expiry).toISOString(),
+          'Expected: PWA picks up this token via refreshFromStorage() when it comes to the foreground. ' +
+          'The token is valid for ~' + Math.round((expiry - Date.now()) / 1000) + 's. ' +
+          'If the PWA does not pick it up, check for storage partitioning (third-party storage restrictions in Chrome).'
+        );
+      } catch (lsErr) {
+        log('error', 'storage',
+          'localStorage write FAILED: ' + lsErr,
+          'Expected: localStorage.setItem to succeed. Actual: threw "' + lsErr + '". ' +
+          'Possible causes: (1) storage quota exceeded, (2) private/incognito mode blocking writes, ' +
+          '(3) iOS Safari ITP blocking cross-context storage. ' +
+          'Fallback: BroadcastChannel will attempt to relay the token directly.'
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // Step 4 — Broadcast to standing PWA context
+      // -----------------------------------------------------------------------
+      var bcOk = false;
+      try {
+        var ch = new BroadcastChannel('gfit-oauth');
+        ch.postMessage({ accessToken: accessToken, expiresIn: expiresIn });
+        ch.close();
+        bcOk = true;
+        log('info', 'broadcast',
+          'Token broadcast via BroadcastChannel("gfit-oauth")',
+          'Expected: standing PWA context (if alive) receives the token via ch.onmessage and calls persistToken(). ' +
+          'This is the primary handoff mechanism for Android CCT → PWA. ' +
+          (lsWriteOk ? 'localStorage write also succeeded — dual redundancy OK.' : 'localStorage write failed — this broadcast is the only delivery path.')
+        );
+      } catch (bcErr) {
+        log('warn', 'broadcast',
+          'BroadcastChannel FAILED: ' + bcErr,
+          'Expected: BroadcastChannel to relay token to standing PWA. Actual: threw "' + bcErr + '". ' +
+          'BroadcastChannel is not supported in older browsers or some private modes. ' +
+          (lsWriteOk ? 'localStorage write succeeded — token will be picked up via refreshFromStorage().' : 'CRITICAL: both localStorage and BroadcastChannel failed — the PWA cannot receive the token.')
+        );
+      }
+
+      // -----------------------------------------------------------------------
+      // Step 5 — Redirect to /sync
+      // -----------------------------------------------------------------------
+      var elapsed = Date.now() - startTs;
+      log('info', 'redirect',
+        'Redirecting to /sync after ' + elapsed + 'ms',
+        'Expected: Android intent system brings the installed PWA to the foreground. ' +
+        'The PWA\'s visibilitychange handler calls refreshFromStorage() and/or the BroadcastChannel listener fires. ' +
+        'lsWriteOk=' + lsWriteOk + ', bcOk=' + bcOk + '.'
+      );
       window.location.replace('/sync');
     }());
   </script>

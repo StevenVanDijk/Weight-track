@@ -76,10 +76,14 @@ export class GoogleFitService {
 
   async connect(): Promise<void> {
     this.log('info', 'connect', 'connect() called');
+    this.logEnvironment('connect');
 
     // If already connected with a valid token, nothing to do.
     if (this._accessToken()) {
-      this.log('info', 'connect', 'Already connected — skipping');
+      const expiry = this._settings().tokenExpiry;
+      const remainingSec = expiry ? Math.round((expiry - Date.now()) / 1000) : null;
+      this.log('info', 'connect', 'Already connected — skipping',
+        `Expected: valid token in memory. Actual: token present, expires in ${remainingSec != null ? remainingSec + 's' : 'unknown'}`);
       this._status.set('idle');
       this._message.set('Already connected to Google Fit.');
       return;
@@ -87,20 +91,58 @@ export class GoogleFitService {
 
     const clientId = this._settings().clientId;
     if (!clientId) {
-      this.log('warn', 'connect', 'No client ID configured');
+      this.log('warn', 'connect', 'No client ID configured',
+        'Expected: clientId set in settings. Actual: empty string. User must paste their OAuth Client ID before connecting.');
       this._status.set('error');
       this._message.set('Enter your Google Client ID first.');
       return;
     }
 
-    this.log('info', 'connect', `Client ID present (length ${clientId.length})`);
+    // Validate client ID format (should end with .apps.googleusercontent.com)
+    const clientIdValid = clientId.includes('.apps.googleusercontent.com');
+    this.log('info', 'connect',
+      `Client ID present — length: ${clientId.length}, format-valid: ${clientIdValid}`,
+      clientIdValid
+        ? `Expected format: <project>.apps.googleusercontent.com — OK`
+        : `Expected format: <project>.apps.googleusercontent.com — MISMATCH (got: "${clientId.slice(0, 20)}…"). Wrong client ID type? Make sure you created a Web OAuth 2.0 Client ID, not Android/iOS.`
+    );
+
+    // Check localStorage availability before attempting OAuth
+    const lsAvailable = this.checkLocalStorage();
+    this.log(lsAvailable ? 'info' : 'warn', 'connect',
+      `localStorage availability: ${lsAvailable}`,
+      lsAvailable
+        ? 'Expected: localStorage writable for token persistence — OK'
+        : 'Expected: localStorage writable for token persistence — UNAVAILABLE. Token will not persist across page loads.'
+    );
+
+    // Check BroadcastChannel availability (needed for Android CCT → PWA handoff)
+    const bcAvailable = typeof BroadcastChannel !== 'undefined';
+    this.log(bcAvailable ? 'info' : 'warn', 'connect',
+      `BroadcastChannel availability: ${bcAvailable}`,
+      bcAvailable
+        ? 'Expected: BroadcastChannel supported for Android CCT token relay — OK'
+        : 'Expected: BroadcastChannel supported — UNAVAILABLE. Android PWA token relay may fail; only localStorage fallback will work.'
+    );
+
     this._status.set('connecting');
     this._message.set('Opening Google sign-in…');
 
     try {
+      this.log('info', 'connect', 'Loading Google Identity Services (GSI) script…',
+        'Expected: script loads from https://accounts.google.com/gsi/client without CSP or network errors');
       await this.loadGsiScript();
+      this.log('info', 'connect', 'GSI script ready — google.accounts.oauth2 API available');
 
-      if (this.isStandalonePwa()) {
+      const standalone = this.isStandalonePwa();
+      this.log('info', 'connect',
+        `Flow selection — isStandalonePwa: ${standalone}`,
+        standalone
+          ? 'Expected flow: redirect (popup.opener is null in standalone mode). Will navigate away to Google, return via /oauth.html.'
+          : 'Expected flow: popup (window.opener available in browser tab). Token returned directly to callback.'
+      );
+
+      if (standalone) {
         // In standalone PWA mode the popup's window.opener is null so GIS cannot
         // post the token back. Use redirect flow instead — the page navigates away
         // and handleRedirectCallback() picks up the token on return.
@@ -110,37 +152,60 @@ export class GoogleFitService {
         // instance that processes the token and then broadcasts it via
         // BroadcastChannel so the standing PWA context can pick it up without
         // relying solely on shared localStorage.
-        this.log('info', 'connect', 'Standalone PWA mode detected — using redirect flow');
+        this.log('info', 'connect', 'Standalone PWA mode confirmed — setting up BroadcastChannel listener before redirect');
         try {
           const ch = new BroadcastChannel('gfit-oauth');
           ch.onmessage = ({ data }: MessageEvent<{ accessToken: string; expiresIn: number }>) => {
             ch.close();
             if (data?.accessToken) {
-              this.log('info', 'connect', `Token received via BroadcastChannel, expires in ${data.expiresIn}s`);
+              this.log('info', 'connect',
+                `Token received via BroadcastChannel — expires in ${data.expiresIn}s`,
+                `Expected: accessToken string in payload. Actual: received ${typeof data.accessToken} of length ${(data.accessToken as string).length}`
+              );
               this.persistToken(data.accessToken, data.expiresIn);
               this._status.set('idle');
               this._message.set('Connected to Google Fit.');
             } else {
-              this.log('warn', 'connect', 'BroadcastChannel message received but no accessToken in payload');
+              this.log('warn', 'connect',
+                'BroadcastChannel message received but no accessToken in payload',
+                `Expected: { accessToken: string, expiresIn: number }. Actual: ${JSON.stringify(data)}`
+              );
             }
           };
-          this.log('info', 'connect', 'BroadcastChannel listener registered on "gfit-oauth"');
+          this.log('info', 'connect', 'BroadcastChannel listener registered on "gfit-oauth"',
+            'Expected: listener will fire when /oauth.html broadcasts the token after Google redirect');
         } catch (bcErr) {
-          this.log('warn', 'connect', `BroadcastChannel unavailable: ${bcErr instanceof Error ? bcErr.message : String(bcErr)}`);
+          this.log('warn', 'connect',
+            `BroadcastChannel setup failed: ${bcErr instanceof Error ? bcErr.message : String(bcErr)}`,
+            'Expected: BroadcastChannel constructor to succeed. Will fall back to refreshFromStorage() on visibilitychange.'
+          );
         }
+        this.log('info', 'connect',
+          `Starting redirect flow — redirect_uri: ${this.redirectUri}`,
+          `Expected: browser navigates to Google OAuth endpoint. Client ID suffix: "…${clientId.slice(-20)}". Scopes: "${SCOPES}". After Google auth, browser redirects to ${this.redirectUri}.`
+        );
         this.startRedirectFlow(clientId);
         // Execution stops here; the browser navigates to Google.
       } else {
-        this.log('info', 'connect', 'Browser mode — using popup flow');
+        this.log('info', 'connect', 'Browser mode — requesting token via GIS popup',
+          'Expected: popup window opens at accounts.google.com. User signs in. Callback receives access_token.');
         const { token, expiresIn } = await this.requestTokenViaPopup(clientId);
-        this.log('info', 'connect', `Token obtained via popup, expires in ${expiresIn}s`);
+        this.log('info', 'connect',
+          `Token obtained via popup — length: ${token.length}, expires_in: ${expiresIn}s`,
+          `Expected: access_token string (typically 200+ chars) with expires_in ~3599. Actual: length=${token.length}, expires_in=${expiresIn}s. ${expiresIn < 60 ? 'WARNING: expires_in is unusually short' : 'OK'}`
+        );
         this.persistToken(token, expiresIn);
         this._status.set('idle');
         this._message.set('Connected to Google Fit.');
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.log('error', 'connect', `Connect failed: ${msg}`);
+      this.log('error', 'connect', `Connect failed: ${msg}`,
+        `Expected: OAuth flow to complete and return a token. Actual error: "${msg}". ` +
+        `Common causes: popup blocked (check browser popup settings), access_denied (add test user in Cloud Console), ` +
+        `invalid_client (wrong client ID or missing Authorised origin ${window.location.origin}), ` +
+        `GSI script load failure (check network / CSP).`
+      );
       this.clearToken();
       this._status.set('error');
       this._message.set(err instanceof Error ? err.message : 'Sign-in failed.');
@@ -163,19 +228,39 @@ export class GoogleFitService {
 
     const sanitizedHash = hash.replace(/access_token=[^&]+/, 'access_token=[REDACTED]');
     const sanitizedSearch = search.replace(/access_token=[^&]+/, 'access_token=[REDACTED]');
-    this.log('info', 'oauth-cb', `handleRedirectCallback() — fromVisibilityChange: ${fromVisibilityChange}`, `hash: "${sanitizedHash}" search: "${sanitizedSearch}"`);
+    this.log('info', 'oauth-cb',
+      `handleRedirectCallback() — fromVisibilityChange: ${fromVisibilityChange}`,
+      `URL: pathname="${window.location.pathname}" hash(${hash.length} chars)="${sanitizedHash}" search(${search.length} chars)="${sanitizedSearch}" currentStatus="${this._status()}"`
+    );
 
-    // Parse both sources: hash (direct PWA navigation) and search params
-    // (via /oauth.html bridge, which converts the hash to query params so the
-    // token survives Android's intent-based handoff to the installed PWA).
-    const hashParams = new URLSearchParams(hash.substring(1)); // strip leading '#'
-    const searchParams = new URLSearchParams(search.substring(1)); // strip leading '?'
+    // Log all keys present in both hash and search params for diagnosis
+    const hashParams = new URLSearchParams(hash.substring(1));
+    const searchParams = new URLSearchParams(search.substring(1));
+    const hashKeys = [...hashParams.keys()];
+    const searchKeys = [...searchParams.keys()];
+    this.log('info', 'oauth-cb',
+      `URL param keys — hash: [${hashKeys.join(', ') || 'none'}] — search: [${searchKeys.join(', ') || 'none'}]`,
+      `Expected after successful Google redirect: hash should contain [access_token, token_type, expires_in, scope] OR search should contain [access_token, expires_in] (via /oauth.html bridge). ` +
+      `Expected after user denial: hash/search should contain [error=access_denied]. ` +
+      `If no params: page loaded normally (not a redirect callback).`
+    );
 
     // Google returns errors either as a hash fragment or query parameter.
     const errorMatch = hash.match(/[#&]error=([^&]+)/) ?? search.match(/[?&]error=([^&]+)/);
     if (errorMatch) {
       const errorCode = decodeURIComponent(errorMatch[1]);
-      this.log('warn', 'oauth-cb', `OAuth error in URL: ${errorCode}`);
+      const errorDesc = hashParams.get('error_description') ?? searchParams.get('error_description') ?? '(no description)';
+      this.log('warn', 'oauth-cb',
+        `OAuth error returned by Google: "${errorCode}"`,
+        `error_description: "${errorDesc}". ` +
+        (errorCode === 'access_denied'
+          ? 'Expected: user grants consent. Actual: user denied OR app not verified. Fix: add your Google account as a Test User in Cloud Console → APIs & Services → OAuth consent screen → Test users.'
+          : errorCode === 'invalid_client'
+          ? 'Expected: valid client_id matching an authorised origin. Actual: client_id rejected by Google. Check the client ID in settings and confirm this origin is listed under Authorised JavaScript origins in Cloud Console.'
+          : errorCode === 'redirect_uri_mismatch'
+          ? `Expected: redirect_uri "${this.redirectUri}" is listed in Cloud Console Authorised redirect URIs. Actual: mismatch. Add "${this.redirectUri}" to Authorised redirect URIs.`
+          : `See https://developers.google.com/identity/protocols/oauth2/web-server#authorization-errors for details on error code "${errorCode}".`)
+      );
       history.replaceState(null, '', window.location.pathname);
       this._status.set('error');
       if (errorCode === 'access_denied') {
@@ -190,58 +275,103 @@ export class GoogleFitService {
       return;
     }
 
-    const hasToken = hash.includes('access_token') || search.includes('access_token');
+    const hasTokenInHash = hash.includes('access_token');
+    const hasTokenInSearch = search.includes('access_token');
+    const hasToken = hasTokenInHash || hasTokenInSearch;
+    this.log('info', 'oauth-cb',
+      `Token presence — in hash: ${hasTokenInHash}, in search: ${hasTokenInSearch}`,
+      hasToken
+        ? `Token found — will extract from ${hasTokenInHash ? 'hash (direct Google redirect)' : 'search params (via /oauth.html bridge)'}`
+        : `No token found — ${fromVisibilityChange ? 'returned from background (expected when CCT handled the redirect)' : 'no redirect callback in progress'}`
+    );
+
     if (!hasToken) {
-      this.log('info', 'oauth-cb', 'No access_token or error in URL');
       if (this._status() === 'connecting') {
         if (fromVisibilityChange) {
           // Returned to foreground with no OAuth data in the URL.  The redirect
           // was likely handled in an Android CCT or iOS Safari context.  Reset to
           // idle so the Connect button becomes active again; the BroadcastChannel
           // listener (set up in connect()) will update state if the token arrives.
-          this.log('info', 'oauth-cb', 'fromVisibilityChange=true — resetting status to idle, awaiting BroadcastChannel');
+          this.log('info', 'oauth-cb',
+            'fromVisibilityChange=true with status="connecting" — resetting to idle, awaiting BroadcastChannel or refreshFromStorage()',
+            'Expected: token will arrive via BroadcastChannel from /oauth.html, or via refreshFromStorage() 500ms retry. If neither fires, the CCT may have been blocked or the redirect_uri is not registered.'
+          );
           this._status.set('idle');
           this._message.set('');
         } else {
           // App restarted after a redirect that carried no token — genuine failure.
-          this.log('error', 'oauth-cb', 'Status was "connecting" but no token in URL — treating as failure');
+          this.log('error', 'oauth-cb',
+            'Status was "connecting" but no token in URL on fresh page load — treating as failure',
+            'Expected: access_token in URL hash after Google redirected back. Actual: URL has no OAuth params. Possible causes: (1) redirect_uri not registered in Cloud Console, (2) Google redirected to a different URL than /sync, (3) browser stripped the hash fragment before Angular loaded.'
+          );
           this._status.set('error');
           this._message.set('Sign-in did not complete. Please try connecting again.');
         }
+      } else {
+        this.log('info', 'oauth-cb',
+          `No token in URL and status is "${this._status()}" — nothing to do`,
+          'Normal page load or navigation — not a redirect callback.'
+        );
       }
       return;
     }
 
     const clientId = this._settings().clientId;
     if (!clientId) {
-      this.log('warn', 'oauth-cb', 'access_token found in URL but no client ID configured — ignoring');
+      this.log('warn', 'oauth-cb',
+        'access_token found in URL but no client ID configured — ignoring',
+        'Expected: client ID already saved before OAuth flow started. Actual: clientId is empty. The token cannot be validated without a client ID. This should not happen in normal flows.'
+      );
       return;
     }
 
     // Prefer hash (direct navigation); fall back to search params (via /oauth.html bridge).
+    const tokenSource = hasTokenInHash ? 'hash' : 'search';
     const token = hashParams.get('access_token') ?? searchParams.get('access_token');
     const expiresIn = Number(
       hashParams.get('expires_in') ?? searchParams.get('expires_in') ?? '3599'
     );
+    const tokenType = hashParams.get('token_type') ?? searchParams.get('token_type') ?? '(not present)';
+    const scope = hashParams.get('scope') ?? searchParams.get('scope') ?? '(not present)';
+
     if (token) {
-      this.log('info', 'oauth-cb', `Token found in URL hash — expires_in: ${expiresIn}s`);
+      const scopeOk = scope.includes('fitness.body');
+      this.log('info', 'oauth-cb',
+        `Token extracted from ${tokenSource} — length: ${token.length}, expires_in: ${expiresIn}s, token_type: ${tokenType}`,
+        `scope: "${scope}". ` +
+        (scopeOk
+          ? 'Expected scope contains fitness.body — OK'
+          : `Expected scope to include "fitness.body.read" and "fitness.body.write". Actual: "${scope}". The app may lack permission to read/write weight data.`) +
+        ` | expires_in expected ~3599, actual ${expiresIn}${expiresIn < 60 ? ' — WARNING: unusually short expiry' : ' — OK'}`
+      );
       this.persistToken(token, expiresIn);
       this._status.set('idle');
       this._message.set('Connected to Google Fit.');
       // Remove the fragment so a page refresh doesn't re-process it.
       history.replaceState(null, '', window.location.pathname);
+      this.log('info', 'oauth-cb', 'URL hash/search cleared via history.replaceState',
+        'Expected: URL is now clean (no access_token). A page refresh will not re-process this token.');
       // Relay the token to any standing PWA context via BroadcastChannel
       // (handles Android CCT → TWA and iOS Safari → standalone app scenarios).
       try {
         const ch = new BroadcastChannel('gfit-oauth');
         ch.postMessage({ accessToken: token, expiresIn });
         ch.close();
-        this.log('info', 'oauth-cb', 'Token relayed via BroadcastChannel "gfit-oauth"');
+        this.log('info', 'oauth-cb',
+          'Token relayed via BroadcastChannel "gfit-oauth"',
+          'Expected: standing PWA context (if any) receives token via ch.onmessage and calls persistToken().'
+        );
       } catch (bcErr) {
-        this.log('warn', 'oauth-cb', `BroadcastChannel relay failed: ${bcErr instanceof Error ? bcErr.message : String(bcErr)}`);
+        this.log('warn', 'oauth-cb',
+          `BroadcastChannel relay failed: ${bcErr instanceof Error ? bcErr.message : String(bcErr)}`,
+          'Expected: BroadcastChannel to relay token to standing PWA context. Actual: relay failed. The standing PWA will rely on refreshFromStorage() instead.'
+        );
       }
     } else {
-      this.log('warn', 'oauth-cb', 'access_token key present in hash but value is null');
+      this.log('warn', 'oauth-cb',
+        'access_token key present in URL but value is null/empty',
+        `Expected: access_token=[non-empty string]. Actual: access_token key exists in ${tokenSource} but the value is null or empty. This may indicate a malformed redirect from /oauth.html or an unexpected Google response.`
+      );
     }
   }
 
@@ -270,22 +400,47 @@ export class GoogleFitService {
    * Returns true if a new valid token was found and applied.
    */
   refreshFromStorage(): boolean {
-    this.log('info', 'storage', 'refreshFromStorage() called');
+    this.log('info', 'storage', 'refreshFromStorage() called',
+      'Expected: read fresh settings from localStorage; apply token if valid and not already in memory. Called after Android CCT closes and PWA comes to foreground.');
     const fresh = this.loadSettings();
     this._settings.set(fresh);
     const { accessToken, tokenExpiry } = fresh;
-    const hasValidToken = !!(accessToken && tokenExpiry && Date.now() < tokenExpiry);
+    const now = Date.now();
+    const hasToken = !!accessToken;
+    const hasExpiry = !!tokenExpiry;
+    const notExpired = hasExpiry && now < tokenExpiry!;
+    const hasValidToken = hasToken && hasExpiry && notExpired;
+    this.log('info', 'storage',
+      `localStorage token state — hasToken: ${hasToken}, hasExpiry: ${hasExpiry}, notExpired: ${notExpired} → hasValidToken: ${hasValidToken}`,
+      hasToken && hasExpiry
+        ? `Token length: ${accessToken!.length}. Expiry: ${new Date(tokenExpiry!).toISOString()}. Now: ${new Date(now).toISOString()}. ` +
+          (notExpired ? `Valid for ${Math.round((tokenExpiry! - now) / 1000)}s more.` : `EXPIRED ${Math.round((now - tokenExpiry!) / 1000)}s ago.`)
+        : hasToken
+        ? 'Token present but tokenExpiry is null — token cannot be validated, treating as expired.'
+        : 'No access token in localStorage. If the CCT wrote the token, it may not have persisted (e.g. storage partitioned or /oauth.html script blocked).'
+    );
     if (hasValidToken && !this._accessToken()) {
-      this.log('info', 'storage', `Valid token found in localStorage, expires at ${new Date(tokenExpiry!).toISOString()}`);
+      this.log('info', 'storage',
+        `Applying localStorage token to in-memory state — expires at ${new Date(tokenExpiry!).toISOString()}`,
+        `Expected: isConnected() becomes true. This handles the Android CCT scenario where /oauth.html wrote the token to localStorage before redirecting back to /sync.`
+      );
       this._accessToken.set(accessToken!);
       this._status.set('idle');
       this._message.set('Connected to Google Fit.');
       return true;
     }
     if (!hasValidToken) {
-      this.log('info', 'storage', accessToken ? 'Token in localStorage is expired or missing expiry' : 'No token in localStorage');
+      this.log('info', 'storage',
+        accessToken ? 'Token in localStorage is expired or missing expiry — not applying' : 'No token in localStorage — nothing to restore',
+        !hasToken
+          ? 'If you just completed the OAuth flow on Android: the CCT may have been blocked from writing to localStorage (storage partitioning). Check oauth.html console errors.'
+          : !hasExpiry
+          ? 'tokenExpiry field is missing from stored settings. This may indicate a corrupted settings object.'
+          : `Token expired at ${new Date(tokenExpiry!).toISOString()}, ${Math.round((now - tokenExpiry!) / 1000)}s ago. User must reconnect.`
+      );
     } else {
-      this.log('info', 'storage', 'Token already applied to state, no update needed');
+      this.log('info', 'storage', 'Token already applied to in-memory state — no update needed',
+        'Expected: _accessToken signal already holds a valid token from a previous call. Actual: both in-memory and localStorage have valid tokens — consistent state.');
     }
     return false;
   }
@@ -627,10 +782,19 @@ export class GoogleFitService {
    */
   private persistToken(token: string, expiresIn: number): void {
     const expiry = Date.now() + Math.max(0, expiresIn - 60) * 1000;
-    this.log('info', 'token', `Token persisted — expires at ${new Date(expiry).toISOString()} (in ${Math.round((expiry - Date.now()) / 1000)}s)`);
+    const remainingSec = Math.round((expiry - Date.now()) / 1000);
+    this.log('info', 'token',
+      `Persisting token — expires at ${new Date(expiry).toISOString()} (in ${remainingSec}s after 60s safety buffer)`,
+      `Token length: ${token.length}. Raw expires_in: ${expiresIn}s. Effective expiry: ${remainingSec}s from now. ` +
+      `Writing to localStorage key "${SETTINGS_KEY}" and IndexedDB. ` +
+      `Expected: isConnected() becomes true. Next action: user can import/export data.`
+    );
     this._settings.set({ ...this._settings(), accessToken: token, tokenExpiry: expiry });
     this._accessToken.set(token);
     this.saveSettings();
+    this.log('info', 'token', 'Token saved to localStorage and queued for IndexedDB write',
+      `Expected: localStorage.getItem("${SETTINGS_KEY}") now contains accessToken and tokenExpiry. Verify in DevTools → Application → Local Storage.`
+    );
   }
 
   /** Clears the token from the signal and from persisted settings. */
@@ -669,34 +833,54 @@ export class GoogleFitService {
   /** Loads the Google Identity Services script if not already present. */
   private loadGsiScript(): Promise<void> {
     if ((window as any).google?.accounts?.oauth2) {
-      this.log('info', 'gsi', 'google.accounts.oauth2 already present — skipping script load');
+      this.log('info', 'gsi', 'google.accounts.oauth2 already present — skipping script load',
+        'Expected: API available. Actual: already loaded. OK.');
       return Promise.resolve();
     }
 
     return new Promise((resolve, reject) => {
       const existing = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
       if (existing) {
-        this.log('info', 'gsi', 'GSI script already in DOM — awaiting load event');
+        this.log('info', 'gsi', 'GSI <script> tag already in DOM but API not yet available — awaiting load event',
+          'Expected: script loads then resolves. If it hangs, check for CSP violations blocking accounts.google.com in DevTools console.');
         existing.addEventListener('load', () => {
-          this.log('info', 'gsi', 'GSI script (pre-existing) loaded');
+          this.log('info', 'gsi', 'GSI script (pre-existing) loaded — google.accounts.oauth2 now available');
           resolve();
         });
         existing.addEventListener('error', () => {
-          this.log('error', 'gsi', 'GSI script (pre-existing) failed to load');
+          this.log('error', 'gsi', 'GSI script (pre-existing) failed to load',
+            `Expected: https://accounts.google.com/gsi/client loads successfully. Actual: onerror fired. ` +
+            `Check: (1) network connectivity, (2) Content-Security-Policy script-src must allow 'https://accounts.google.com', ` +
+            `(3) no ad blocker or privacy extension blocking Google scripts.`
+          );
           reject(new Error('GSI script failed to load'));
         });
         return;
       }
-      this.log('info', 'gsi', 'Injecting GSI script into <head>');
+      this.log('info', 'gsi', 'Injecting GSI <script src="https://accounts.google.com/gsi/client"> into <head>',
+        'Expected: script fetches, executes, and populates window.google.accounts.oauth2. Check DevTools Network tab for the request status.');
+      const injectedAt = Date.now();
       const script = document.createElement('script');
       script.src = 'https://accounts.google.com/gsi/client';
       script.async = true;
       script.onload = () => {
-        this.log('info', 'gsi', 'GSI script loaded successfully');
-        resolve();
+        const elapsed = Date.now() - injectedAt;
+        const apiAvailable = !!(window as any).google?.accounts?.oauth2;
+        this.log(apiAvailable ? 'info' : 'warn', 'gsi',
+          `GSI script loaded in ${elapsed}ms — google.accounts.oauth2 available: ${apiAvailable}`,
+          apiAvailable
+            ? 'Expected: API available after script load. Actual: OK.'
+            : 'Expected: window.google.accounts.oauth2 to be defined after script load. Actual: still undefined. The script may have loaded but not initialised — this is unusual and may indicate an error within the GSI script itself.'
+        );
+        if (apiAvailable) resolve();
+        else reject(new Error('GSI script loaded but google.accounts.oauth2 is not available'));
       };
       script.onerror = () => {
-        this.log('error', 'gsi', 'GSI script failed to load — check network and CSP');
+        this.log('error', 'gsi', 'GSI script failed to load — onerror fired',
+          `Expected: https://accounts.google.com/gsi/client fetches successfully. Actual: network or CSP error. ` +
+          `Fix: (1) Verify internet connectivity. (2) Check Content-Security-Policy — script-src must include 'https://accounts.google.com'. ` +
+          `(3) Disable browser extensions that block Google scripts. (4) Check DevTools → Network for the request status code.`
+        );
         reject(new Error('Failed to load Google Identity Services'));
       };
       document.head.appendChild(script);
@@ -713,18 +897,42 @@ export class GoogleFitService {
 
   /** Popup flow (browser): opens the Google sign-in popup and resolves with the token and its expiry. */
   private requestTokenViaPopup(clientId: string): Promise<{ token: string; expiresIn: number }> {
-    this.log('info', 'oauth', 'Requesting token via GIS popup');
+    this.log('info', 'oauth',
+      'Initialising GIS token client for popup flow',
+      `Config: client_id="…${clientId.slice(-20)}", scope="${SCOPES}", prompt="" (consent only on first use). ` +
+      `Expected: popup opens at accounts.google.com, user signs in, callback fires with access_token.`
+    );
     return new Promise((resolve, reject) => {
       const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: clientId,
         scope: SCOPES,
         callback: (resp: any) => {
           if (resp.error) {
-            this.log('error', 'oauth', `Popup OAuth error: ${resp.error}`, resp.error_description ?? '');
+            this.log('error', 'oauth',
+              `Popup OAuth error: "${resp.error}"`,
+              `error_description: "${resp.error_description ?? '(none)'}". ` +
+              (resp.error === 'access_denied'
+                ? 'Expected: user grants consent. Actual: denied. Add your account as a Test User in Cloud Console → OAuth consent screen → Test users.'
+                : resp.error === 'popup_closed_by_user'
+                ? 'Expected: user completes sign-in. Actual: popup closed without completing. User dismissed the popup.'
+                : resp.error === 'popup_blocked_by_browser'
+                ? 'Expected: popup to open. Actual: browser blocked popup. Allow popups for this site, or trigger connect() from a direct user gesture (button click).'
+                : resp.error === 'invalid_client'
+                ? `Expected: valid client_id. Actual: Google rejected the client_id. Verify the Client ID ends with ".apps.googleusercontent.com" and the origin "${window.location.origin}" is listed in Authorised JavaScript origins.`
+                : `Full response: ${JSON.stringify(resp)}`)
+            );
             reject(new Error(`OAuth error: ${resp.error_description ?? resp.error}`));
           } else {
             const expiresIn = Number(resp.expires_in ?? 3599);
-            this.log('info', 'oauth', `Popup OAuth success — token received, expires_in: ${expiresIn}s`);
+            const hasToken = !!resp.access_token;
+            const tokenType = resp.token_type ?? '(not set)';
+            const grantedScope = resp.scope ?? '(not set)';
+            this.log('info', 'oauth',
+              `Popup OAuth success — token received, length: ${(resp.access_token as string)?.length ?? 0}, expires_in: ${expiresIn}s, token_type: ${tokenType}`,
+              `Expected: access_token string, token_type="Bearer", expires_in~3599, scope includes fitness.body. ` +
+              `Actual: hasToken=${hasToken}, tokenType="${tokenType}", expires_in=${expiresIn}, scope="${grantedScope}". ` +
+              (grantedScope.includes('fitness.body') ? 'Scope OK.' : `WARNING: granted scope "${grantedScope}" does not include fitness.body — import/export may fail with 403.`)
+            );
             resolve({
               token: resp.access_token as string,
               expiresIn,
@@ -732,17 +940,32 @@ export class GoogleFitService {
           }
         },
         error_callback: (err: any) => {
-          this.log('error', 'oauth', `Popup error_callback: ${err?.message ?? 'unknown'}`, JSON.stringify(err));
+          this.log('error', 'oauth',
+            `Popup error_callback: ${err?.type ?? err?.message ?? 'unknown'}`,
+            `Full error object: ${JSON.stringify(err)}. ` +
+            (err?.type === 'popup_closed' || err?.message?.includes('closed')
+              ? 'Expected: user completes sign-in. Actual: popup closed early. Check if popup was blocked or user dismissed it.'
+              : 'Unexpected error from GIS — see full error object for details.')
+          );
           reject(new Error(err?.message ?? 'OAuth popup closed'));
         },
       });
+      this.log('info', 'oauth', 'Calling tokenClient.requestAccessToken({ prompt: "" })',
+        'Expected: GIS opens popup window at accounts.google.com. If nothing happens, the browser may have blocked the popup (must be triggered by a user gesture).');
       tokenClient.requestAccessToken({ prompt: '' });
     });
   }
 
   /** Redirect flow (standalone PWA): navigates the page to Google's auth endpoint. */
   private startRedirectFlow(clientId: string): void {
-    this.log('info', 'oauth', `Starting redirect flow — redirect_uri: ${this.redirectUri}`);
+    this.log('info', 'oauth',
+      `Starting redirect flow — ux_mode: "redirect"`,
+      `Config: client_id="…${clientId.slice(-20)}", scope="${SCOPES}", ux_mode="redirect", redirect_uri="${this.redirectUri}". ` +
+      `Expected: browser navigates to accounts.google.com. After sign-in Google redirects to "${this.redirectUri}" with #access_token=... in the hash. ` +
+      `/oauth.html reads the token, writes to localStorage, broadcasts via BroadcastChannel, then redirects to /sync. ` +
+      `The PWA picks up the token via refreshFromStorage() or BroadcastChannel on visibilitychange. ` +
+      `IMPORTANT: "${this.redirectUri}" MUST be listed in Cloud Console → Credentials → OAuth 2.0 Client → Authorised redirect URIs.`
+    );
     const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: SCOPES,
@@ -752,6 +975,8 @@ export class GoogleFitService {
     });
     tokenClient.requestAccessToken({ prompt: '' });
     // The browser navigates away; nothing after this line runs.
+    this.log('info', 'oauth', 'requestAccessToken() called — browser should be navigating to Google now',
+      'If the page does not navigate, GIS may have thrown a silent error. Check for console errors above.');
   }
 
   /**
@@ -804,6 +1029,54 @@ export class GoogleFitService {
     const created = await createRes.json();
     this.log('info', 'datasource', `Data source created: ${created.dataStreamId}`);
     return created.dataStreamId as string;
+  }
+
+  /**
+   * Logs a structured snapshot of the current browser/device environment.
+   * Called at the start of connect() to provide baseline diagnostic context.
+   */
+  private logEnvironment(caller: string): void {
+    const standalone = this.isStandalonePwa();
+    const displayMode =
+      window.matchMedia('(display-mode: standalone)').matches ? 'standalone' :
+      window.matchMedia('(display-mode: minimal-ui)').matches ? 'minimal-ui' :
+      window.matchMedia('(display-mode: fullscreen)').matches ? 'fullscreen' :
+      'browser';
+    const iosSafariStandalone = (window.navigator as any).standalone === true;
+    const online = navigator.onLine;
+    const ua = navigator.userAgent;
+    const isAndroid = /Android/i.test(ua);
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+    const isSafari = /Safari/i.test(ua) && !/Chrome/i.test(ua);
+    const isChrome = /Chrome/i.test(ua);
+    const cookiesEnabled = navigator.cookieEnabled;
+    const storageEstimate = typeof navigator.storage?.estimate === 'function' ? 'supported' : 'not supported';
+
+    this.log('info', caller,
+      `Environment snapshot — displayMode: "${displayMode}", isStandalonePwa: ${standalone}, platform: ${isAndroid ? 'Android' : isIOS ? 'iOS' : 'desktop'}`,
+      `online: ${online}, cookies: ${cookiesEnabled}, storageEstimate: ${storageEstimate}, ` +
+      `displayMode: "${displayMode}", navigator.standalone (iOS): ${iosSafariStandalone}, ` +
+      `browser: ${isChrome ? 'Chrome' : isSafari ? 'Safari' : 'other'}, ` +
+      `Android: ${isAndroid}, iOS: ${isIOS}. ` +
+      `Origin: "${window.location.origin}". ` +
+      `Expected redirect_uri: "${this.redirectUri}". ` +
+      `UA: "${ua.substring(0, 120)}${ua.length > 120 ? '…' : ''}"`
+    );
+  }
+
+  /**
+   * Tests whether localStorage is available and writable.
+   * Returns false if storage is full or blocked (e.g. Safari private mode).
+   */
+  private checkLocalStorage(): boolean {
+    try {
+      const testKey = '__gfit_ls_test__';
+      localStorage.setItem(testKey, '1');
+      localStorage.removeItem(testKey);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private loadSettings(): GoogleFitSettings {
