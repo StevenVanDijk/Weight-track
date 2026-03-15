@@ -214,14 +214,50 @@ describe('GoogleFitService', () => {
     expect(service.status()).toBe('idle');
   });
 
-  it('handleRedirectCallback resets connecting status to error when no token is in the URL', async () => {
+  it('handleRedirectCallback resets connecting status to error when no token is in the URL (default / non-CCT path)', async () => {
     // Simulate the state after connect() was called (status = connecting) but
-    // the user returned from the consent flow without a token in the URL hash
-    // (e.g. the Chrome Custom Tab handled the redirect).
+    // the app restarted after a redirect that carried no token — a genuine failure.
     (service as any)._status.set('connecting');
-    await service.handleRedirectCallback();
+    await service.handleRedirectCallback(); // fromVisibilityChange defaults to false
     expect(service.status()).toBe('error');
     expect(service.message()).toContain('did not complete');
+  });
+
+  it('handleRedirectCallback resets to idle (not error) when called from visibilityChange with no token in URL', async () => {
+    // Simulates returning to foreground after an Android CCT or iOS Safari handled
+    // the redirect — the main PWA URL is unchanged (no hash token), but the token
+    // may still arrive via BroadcastChannel.  Should not show an error.
+    (service as any)._status.set('connecting');
+    (service as any)._message.set('Opening Google sign-in…');
+    await service.handleRedirectCallback(true); // fromVisibilityChange = true
+    expect(service.status()).toBe('idle');
+    expect(service.message()).toBe('');
+  });
+
+  it('handleRedirectCallback broadcasts the token via BroadcastChannel on success', async () => {
+    const messages: { accessToken: string; expiresIn: number }[] = [];
+    const ch = new BroadcastChannel('gfit-oauth');
+    ch.onmessage = (e) => messages.push(e.data);
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '#access_token=bc-token&expires_in=3600', pathname: '/sync', search: '' },
+      configurable: true,
+    });
+    vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+    service.setClientId('test-client.apps.googleusercontent.com');
+
+    await service.handleRedirectCallback();
+    // Allow the BroadcastChannel postMessage to be delivered
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(messages.length).toBeGreaterThan(0);
+    expect(messages[0].accessToken).toBe('bc-token');
+    ch.close();
+
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, hash: '', search: '' },
+      configurable: true,
+    });
   });
 
   it('handleRedirectCallback does not change non-connecting status when no token in URL', async () => {

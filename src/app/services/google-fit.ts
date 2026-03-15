@@ -79,6 +79,23 @@ export class GoogleFitService {
         // In standalone PWA mode the popup's window.opener is null so GIS cannot
         // post the token back. Use redirect flow instead — the page navigates away
         // and handleRedirectCallback() picks up the token on return.
+        //
+        // On Android the redirect opens in a Chrome Custom Tab (CCT); on iOS it may
+        // open in Safari.  In both cases the redirect context boots a fresh Angular
+        // instance that processes the token and then broadcasts it via
+        // BroadcastChannel so the standing PWA context can pick it up without
+        // relying solely on shared localStorage.
+        try {
+          const ch = new BroadcastChannel('gfit-oauth');
+          ch.onmessage = ({ data }: MessageEvent<{ accessToken: string; expiresIn: number }>) => {
+            ch.close();
+            if (data?.accessToken) {
+              this.persistToken(data.accessToken, data.expiresIn);
+              this._status.set('idle');
+              this._message.set('Connected to Google Fit.');
+            }
+          };
+        } catch { /* BroadcastChannel unavailable on this platform */ }
         this.startRedirectFlow(clientId);
         // Execution stops here; the browser navigates to Google.
       } else {
@@ -98,8 +115,13 @@ export class GoogleFitService {
    * Call this when the Sync page initialises.  If the user just returned from
    * the Google OAuth redirect (token or error is in the URL), this method will
    * process the response and update the service state accordingly.
+   *
+   * @param fromVisibilityChange Pass `true` when calling from a `visibilitychange`
+   *   handler (i.e. the app returned to the foreground).  In that case a missing
+   *   token in the URL is not treated as an error — the token may arrive via the
+   *   BroadcastChannel listener set up in `connect()`, or via `refreshFromStorage()`.
    */
-  async handleRedirectCallback(): Promise<void> {
+  async handleRedirectCallback(fromVisibilityChange = false): Promise<void> {
     const hash = window.location.hash;
     const search = window.location.search;
 
@@ -122,10 +144,19 @@ export class GoogleFitService {
     }
 
     if (!hash.includes('access_token')) {
-      // Auth flow was in progress but no token arrived — let the user retry.
       if (this._status() === 'connecting') {
-        this._status.set('error');
-        this._message.set('Sign-in did not complete. Please try connecting again.');
+        if (fromVisibilityChange) {
+          // Returned to foreground with no OAuth data in the URL.  The redirect
+          // was likely handled in an Android CCT or iOS Safari context.  Reset to
+          // idle so the Connect button becomes active again; the BroadcastChannel
+          // listener (set up in connect()) will update state if the token arrives.
+          this._status.set('idle');
+          this._message.set('');
+        } else {
+          // App restarted after a redirect that carried no token — genuine failure.
+          this._status.set('error');
+          this._message.set('Sign-in did not complete. Please try connecting again.');
+        }
       }
       return;
     }
@@ -143,6 +174,13 @@ export class GoogleFitService {
       this._message.set('Connected to Google Fit.');
       // Remove the fragment so a page refresh doesn't re-process it.
       history.replaceState(null, '', window.location.pathname);
+      // Relay the token to any standing PWA context via BroadcastChannel
+      // (handles Android CCT → TWA and iOS Safari → standalone app scenarios).
+      try {
+        const ch = new BroadcastChannel('gfit-oauth');
+        ch.postMessage({ accessToken: token, expiresIn });
+        ch.close();
+      } catch { /* BroadcastChannel unavailable on this platform */ }
     }
   }
 

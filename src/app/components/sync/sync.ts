@@ -33,9 +33,11 @@ class SyncComponent {
       if (document.visibilityState === 'visible') {
         const found = this.gfit.refreshFromStorage();
         if (!found) {
-          // Fall back to the URL-hash check (desktop redirect flow or cases
-          // where the CCT does route the redirect back into the PWA WebView).
-          this.gfit.handleRedirectCallback();
+          // Pass fromVisibilityChange=true so that a missing token in the URL
+          // resets status to idle rather than showing a misleading error.
+          // The BroadcastChannel listener set up in connect() will update state
+          // if the token arrives from a CCT or external browser context.
+          this.gfit.handleRedirectCallback(true);
         }
       }
     };
