@@ -14,6 +14,13 @@ const MAX_LOG_ENTRIES = 1000;
 
 export interface GoogleFitSettings {
   clientId: string;
+  /**
+   * OAuth Client Secret for "Web application" type clients.
+   * Google requires this in the PKCE token exchange for web application clients
+   * (unlike native/desktop clients). Leave empty only if using a Desktop app
+   * client type.
+   */
+  clientSecret: string;
   lastSyncDate: string | null;
   /** IDs of WeightEntry records already written to Google Fit — prevents duplicate writes. */
   syncedEntryIds: string[];
@@ -54,6 +61,12 @@ export class GoogleFitService {
 
   setClientId(clientId: string): void {
     const updated: GoogleFitSettings = { ...this._settings(), clientId: clientId.trim() };
+    this._settings.set(updated);
+    this.saveSettings();
+  }
+
+  setClientSecret(clientSecret: string): void {
+    const updated: GoogleFitSettings = { ...this._settings(), clientSecret: clientSecret.trim() };
     this._settings.set(updated);
     this.saveSettings();
   }
@@ -686,6 +699,7 @@ export class GoogleFitService {
       const s = raw as GoogleFitSettings;
       const restored: GoogleFitSettings = {
         clientId: s.clientId ?? '',
+        clientSecret: s.clientSecret ?? '',
         lastSyncDate: s.lastSyncDate ?? null,
         syncedEntryIds: Array.isArray(s.syncedEntryIds) ? s.syncedEntryIds : [],
         accessToken: s.accessToken ?? null,
@@ -988,26 +1002,32 @@ export class GoogleFitService {
     }
 
     const clientId = this._settings().clientId;
+    const clientSecret = this._settings().clientSecret;
     this.log('info', 'pkce',
       `Exchanging code for token — POST https://oauth2.googleapis.com/token`,
-      `client_id: "…${clientId.slice(-20)}", redirect_uri: "${this.redirectUri}", code_verifier length: ${verifier.length}. ` +
-      `No client_secret needed (PKCE). Expected: 200 with { access_token, expires_in, token_type }.`
+      `client_id: "…${clientId.slice(-20)}", redirect_uri: "${this.redirectUri}", code_verifier length: ${verifier.length}, ` +
+      `client_secret: ${clientSecret ? 'provided' : 'not provided'}. ` +
+      `Expected: 200 with { access_token, expires_in, token_type }.`
     );
 
     this._status.set('connecting');
     this._message.set('Completing sign-in…');
 
     try {
+      const tokenParams: Record<string, string> = {
+        code,
+        client_id: clientId,
+        redirect_uri: this.redirectUri,
+        code_verifier: verifier,
+        grant_type: 'authorization_code',
+      };
+      if (clientSecret) {
+        tokenParams['client_secret'] = clientSecret;
+      }
       const res = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          code,
-          client_id: clientId,
-          redirect_uri: this.redirectUri,
-          code_verifier: verifier,
-          grant_type: 'authorization_code',
-        }),
+        body: new URLSearchParams(tokenParams),
       });
 
       const data = await res.json();
@@ -1242,13 +1262,14 @@ export class GoogleFitService {
       const parsed = raw ? JSON.parse(raw) : {};
       return {
         clientId: parsed.clientId ?? '',
+        clientSecret: parsed.clientSecret ?? '',
         lastSyncDate: parsed.lastSyncDate ?? null,
         syncedEntryIds: Array.isArray(parsed.syncedEntryIds) ? parsed.syncedEntryIds : [],
         accessToken: parsed.accessToken ?? null,
         tokenExpiry: parsed.tokenExpiry ?? null,
       };
     } catch {
-      return { clientId: '', lastSyncDate: null, syncedEntryIds: [], accessToken: null, tokenExpiry: null };
+      return { clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [], accessToken: null, tokenExpiry: null };
     }
   }
 
