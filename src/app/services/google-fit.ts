@@ -58,6 +58,7 @@ export class GoogleFitService {
   readonly importedCount = this._importedCount.asReadonly();
   readonly exportedCount = this._exportedCount.asReadonly();
   readonly logs = this._logs.asReadonly();
+  readonly connectedLabel = computed(() => this.formatConnectedLabel(this._settings().tokenExpiry));
 
   setClientId(clientId: string): void {
     const updated: GoogleFitSettings = { ...this._settings(), clientId: clientId.trim() };
@@ -803,6 +804,38 @@ export class GoogleFitService {
     this._settings.set({ ...this._settings(), accessToken: null, tokenExpiry: null });
     this._accessToken.set(null);
     this.saveSettings();
+  }
+
+  /**
+   * Returns a human-readable "Connected to Google Fit …" label describing
+   * when the current token expires.
+   * - < 60 minutes remaining  → "Connected to Google Fit for N more minute(s)."
+   * - ≥ 60 minutes, same day  → "Connected to Google Fit until HH:MM."
+   * - ≥ 60 minutes, tomorrow  → "Connected to Google Fit until tomorrow HH:MM."
+   */
+  private formatConnectedLabel(expiry: number | null): string {
+    if (!expiry) return 'Connected to Google Fit.';
+    const remainingMs = expiry - Date.now();
+    const remainingMin = Math.floor(remainingMs / 60000);
+    if (remainingMin < 1) {
+      return 'Connected to Google Fit for less than a minute.';
+    }
+    if (remainingMin < 60) {
+      const words: Record<number, string> = {
+        1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five',
+        6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten',
+        11: 'eleven', 12: 'twelve',
+      };
+      const label = words[remainingMin] ?? String(remainingMin);
+      return `Connected to Google Fit for ${label} more minute${remainingMin === 1 ? '' : 's'}.`;
+    }
+    const expiryDate = new Date(expiry);
+    const hh = String(expiryDate.getHours()).padStart(2, '0');
+    const mm = String(expiryDate.getMinutes()).padStart(2, '0');
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = expiryDate.toDateString() === tomorrow.toDateString();
+    return `Connected to Google Fit until ${isTomorrow ? 'tomorrow ' : ''}${hh}:${mm}.`;
   }
 
   /**

@@ -1567,4 +1567,88 @@ describe('GoogleFitService', () => {
       expect(service.status()).toBe('idle');
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // connectedLabel
+  // ---------------------------------------------------------------------------
+
+  describe('connectedLabel', () => {
+    it('returns generic label when no token expiry is stored', () => {
+      expect(service.connectedLabel()).toBe('Connected to Google Fit.');
+    });
+
+    it('returns "for less than a minute" when expiry is fewer than 60 seconds away', () => {
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'tok', tokenExpiry: Date.now() + 30_000,
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+      expect(svc.connectedLabel()).toBe('Connected to Google Fit for less than a minute.');
+    });
+
+    it('uses written number for minutes < 13', () => {
+      const expectedWords: Record<number, string> = {
+        1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five',
+        6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten',
+        11: 'eleven', 12: 'twelve',
+      };
+      for (const [mins, word] of Object.entries(expectedWords)) {
+        const expiry = Date.now() + Number(mins) * 60_000 + 30_000; // add 30s buffer
+        localStorage.setItem('weight_google_fit', JSON.stringify({
+          clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+          accessToken: 'tok', tokenExpiry: expiry,
+        }));
+        TestBed.resetTestingModule();
+        TestBed.configureTestingModule({});
+        const svc = TestBed.inject(GoogleFitService);
+        const plural = Number(mins) === 1 ? '' : 's';
+        expect(svc.connectedLabel()).toBe(`Connected to Google Fit for ${word} more minute${plural}.`);
+      }
+    });
+
+    it('uses numeric minutes for values 13–59', () => {
+      const expiry = Date.now() + 25 * 60_000 + 30_000;
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'tok', tokenExpiry: expiry,
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+      expect(svc.connectedLabel()).toBe('Connected to Google Fit for 25 more minutes.');
+    });
+
+    it('returns "until HH:MM" for same-day expiry ≥ 60 minutes away', () => {
+      const expiryDate = new Date();
+      expiryDate.setHours(23, 45, 0, 0);
+      // Ensure we are at least 60 minutes before 23:45
+      vi.setSystemTime(new Date(expiryDate.getTime() - 2 * 60 * 60_000));
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'tok', tokenExpiry: expiryDate.getTime(),
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+      expect(svc.connectedLabel()).toBe('Connected to Google Fit until 23:45.');
+      vi.useRealTimers();
+    });
+
+    it('returns "until tomorrow HH:MM" when expiry is tomorrow', () => {
+      const now = new Date('2026-03-16T22:00:00');
+      vi.setSystemTime(now);
+      const expiry = new Date('2026-03-17T14:56:00');
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'tok', tokenExpiry: expiry.getTime(),
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+      expect(svc.connectedLabel()).toBe('Connected to Google Fit until tomorrow 14:56.');
+      vi.useRealTimers();
+    });
+  });
 });

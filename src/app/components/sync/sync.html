@@ -63,7 +63,7 @@
     <div class="connection-header">
       <div class="connection-status">
         <span class="status-dot" [class.connected]="gfit.isConnected()"></span>
-        <span>{{ gfit.isConnected() ? 'Connected to Google Fit' : 'Not connected' }}</span>
+        <span>{{ gfit.isConnected() ? gfit.connectedLabel() : 'Not connected' }}</span>
       </div>
 
       @if (!gfit.isConnected()) {
