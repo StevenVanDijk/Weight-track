@@ -21,6 +21,7 @@ describe('SyncComponent', () => {
             resetToIdle: resetToIdleSpy,
             settings: () => ({ clientId: '', lastSyncDate: null }),
             isConnected: () => isConnected,
+            connectedLabel: () => 'Connected to Google Fit.',
             status: () => 'idle',
             message: () => '',
             logs: () => [],

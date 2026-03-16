@@ -323,7 +323,22 @@
 - **US-176** As a user, each weight entry is written to Google Fit at most once — subsequent calls for the same entry ID are skipped — so that duplicate data points are never created in Google Fit.
 - **US-177** As a user, if the background auto-sync to Google Fit fails (e.g. network error or expired token), the failure is silent and does not interrupt my weight-logging flow; I can still use the manual Export action to push data later.
 
-### 13.7 Debug Logging
+### 13.7 Token Expiry Display
+- **US-195** As a user, when connected to Google Fit, the connection label includes a human-readable expiry phrase so that I know when my session will end without having to check settings.
+- **US-196** As a user, when fewer than 60 minutes remain, the label reads "for N more minutes" (written words for 1–12, digits for 13–59) so that short durations are expressed naturally (e.g. "for six more minutes.").
+- **US-197** As a user, when fewer than one minute remains, the label reads "for less than a minute." so that the display never goes negative.
+- **US-198** As a user, when the token expires later the same day with at least 60 minutes remaining, the label reads "until HH:MM." so that I can see the precise time.
+- **US-199** As a user, when the token expires tomorrow, the label reads "until tomorrow HH:MM." so that I know it will last through today.
+- **US-200** As a user, when the token expires 2–5 days away, the label reads "until <Weekday> HH:MM." so that I can orient the expiry without needing to recall the date.
+- **US-201** As a user, when the token expires 6 or more days away, the label reads "until D Mon HH:MM." (e.g. "until 25 Mar 18:00.") so that I have a concrete date reference.
+
+### 13.8 Proactive Token Refresh
+- **US-202** As a user, in browser mode (client ID configured, not standalone PWA), the app silently refreshes my token 5 minutes before it expires so that my connection stays active without requiring me to manually reconnect.
+- **US-203** As a user, if a proactive silent refresh fails, the token remains valid until its scheduled expiry and the connection is cleared then — so that I am not prematurely disconnected due to a transient refresh failure.
+- **US-204** As a user, in standalone PWA mode or when no client ID is configured (where silent refresh is unavailable), the connected state is automatically cleared the moment the token expires so that the UI never shows a stale or expired connection.
+- **US-205** As a user, if I disconnect manually, any pending refresh timer is cancelled immediately so that no background activity occurs after I have ended the session.
+
+### 13.9 Debug Logging
 - **US-184** As a developer, every key step of the Google Fit flow (OAuth initiation, token receipt, API calls and responses, data source creation) is captured as a structured log entry so that failures can be diagnosed without access to the user's device console.
 - **US-185** As a developer, each log entry contains a timestamp (ISO), severity level (info/warn/error), context label, human-readable message, and an optional detail field for API response bodies.
 - **US-186** As a developer, log entries are capped at 1 000 entries (oldest discarded) so that memory usage remains bounded during long sessions.
