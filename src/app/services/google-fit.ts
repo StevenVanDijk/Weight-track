@@ -832,10 +832,25 @@ export class GoogleFitService {
     const expiryDate = new Date(expiry);
     const hh = String(expiryDate.getHours()).padStart(2, '0');
     const mm = String(expiryDate.getMinutes()).padStart(2, '0');
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const isTomorrow = expiryDate.toDateString() === tomorrow.toDateString();
-    return `Connected to Google Fit until ${isTomorrow ? 'tomorrow ' : ''}${hh}:${mm}.`;
+    const time = `${hh}:${mm}`;
+    const today = new Date();
+    // Compare calendar days by zeroing the time portion
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const startOfExpiry = new Date(expiryDate.getFullYear(), expiryDate.getMonth(), expiryDate.getDate());
+    const daysDiff = Math.round((startOfExpiry.getTime() - startOfToday.getTime()) / 86_400_000);
+    if (daysDiff === 0) {
+      return `Connected to Google Fit until ${time}.`;
+    }
+    if (daysDiff === 1) {
+      return `Connected to Google Fit until tomorrow ${time}.`;
+    }
+    if (daysDiff < 6) {
+      const weekday = expiryDate.toLocaleDateString('en-GB', { weekday: 'long' });
+      return `Connected to Google Fit until ${weekday} ${time}.`;
+    }
+    const day = expiryDate.getDate();
+    const month = expiryDate.toLocaleDateString('en-GB', { month: 'short' });
+    return `Connected to Google Fit until ${day} ${month} ${time}.`;
   }
 
   /**

@@ -1650,5 +1650,36 @@ describe('GoogleFitService', () => {
       expect(svc.connectedLabel()).toBe('Connected to Google Fit until tomorrow 14:56.');
       vi.useRealTimers();
     });
+
+    it('returns "until <weekday> HH:MM" when expiry is 2–5 days away', () => {
+      // 2026-03-16 is a Monday; 3 days later is Thursday 2026-03-19
+      const now = new Date('2026-03-16T10:00:00');
+      vi.setSystemTime(now);
+      const expiry = new Date('2026-03-19T09:30:00');
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'tok', tokenExpiry: expiry.getTime(),
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+      expect(svc.connectedLabel()).toBe('Connected to Google Fit until Thursday 09:30.');
+      vi.useRealTimers();
+    });
+
+    it('returns "until D Mon HH:MM" when expiry is 6 or more days away', () => {
+      const now = new Date('2026-03-16T10:00:00');
+      vi.setSystemTime(now);
+      const expiry = new Date('2026-03-25T18:00:00');
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'tok', tokenExpiry: expiry.getTime(),
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+      expect(svc.connectedLabel()).toBe('Connected to Google Fit until 25 Mar 18:00.');
+      vi.useRealTimers();
+    });
   });
 });
