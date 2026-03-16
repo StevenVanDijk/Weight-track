@@ -39,6 +39,23 @@
       />
       <button class="btn btn-ghost save-btn" (click)="saveClientId()">Save</button>
     </div>
+    <label class="field-label" for="clientSecret">Google OAuth Client Secret</label>
+    <p class="help-text help-text--sm">
+      Required for <strong>Web application</strong> OAuth clients. Google rejects the token
+      exchange without it. Find this next to your Client ID in Cloud Console → Credentials.
+    </p>
+    <div class="input-row">
+      <input
+        id="clientSecret"
+        class="text-input"
+        type="password"
+        placeholder="Paste your Client Secret here…"
+        [value]="clientSecretInput()"
+        (input)="clientSecretInput.set($any($event.target).value)"
+        aria-label="Google OAuth Client Secret"
+      />
+      <button class="btn btn-ghost save-btn" (click)="saveClientSecret()">Save</button>
+    </div>
   </div>
 
   <!-- Connection status -->
@@ -52,7 +69,7 @@
       @if (!gfit.isConnected()) {
         <button
           class="btn btn-primary"
-          [disabled]="gfit.status() === 'connecting' || !clientIdInput().trim()"
+          [disabled]="gfit.status() === 'connecting' || !clientIdInput().trim() || !clientSecretInput().trim()"
           (click)="connect()"
           aria-label="Connect to Google Fit"
         >

@@ -89,6 +89,36 @@ describe('GoogleFitService', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // setClientSecret
+  // ---------------------------------------------------------------------------
+
+  it('setClientSecret trims and persists the client secret', () => {
+    service.setClientSecret('  my-secret  ');
+    expect(service.settings().clientSecret).toBe('my-secret');
+    const raw = JSON.parse(localStorage.getItem('weight_google_fit')!);
+    expect(raw.clientSecret).toBe('my-secret');
+  });
+
+  it('defaults clientSecret to empty string when not in storage', () => {
+    expect(service.settings().clientSecret).toBe('');
+  });
+
+  it('restores clientSecret from localStorage on construction', () => {
+    localStorage.setItem('weight_google_fit', JSON.stringify({
+      clientId: 'test-client',
+      clientSecret: 'stored-secret',
+      lastSyncDate: null,
+      syncedEntryIds: [],
+      accessToken: null,
+      tokenExpiry: null,
+    }));
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({});
+    const fresh = TestBed.inject(GoogleFitService);
+    expect(fresh.settings().clientSecret).toBe('stored-secret');
+  });
+
+  // ---------------------------------------------------------------------------
   // connect — without a client ID
   // ---------------------------------------------------------------------------
 
@@ -1430,6 +1460,46 @@ describe('GoogleFitService', () => {
       expect(service.isConnected()).toBe(false);
       expect(service.status()).toBe('error');
       expect(service.message()).toContain('could not reach Google servers');
+    });
+
+    it('exchangeCodeForToken includes client_secret in request when set', async () => {
+      const state = 'state-with-secret';
+      localStorage.setItem('gfit_pkce_state', state);
+      localStorage.setItem('gfit_pkce_verifier', 'verifier');
+      service.setClientSecret('my-client-secret');
+
+      let capturedBody: URLSearchParams | null = null;
+      vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+        capturedBody = new URLSearchParams(init?.body as string);
+        return Promise.resolve(new Response(
+          JSON.stringify({ access_token: 'tok', expires_in: 3599 }),
+          { status: 200 }
+        ));
+      });
+
+      await service.exchangeCodeForToken('code', state);
+
+      expect(capturedBody!.get('client_secret')).toBe('my-client-secret');
+    });
+
+    it('exchangeCodeForToken omits client_secret from request when not set', async () => {
+      const state = 'state-no-secret';
+      localStorage.setItem('gfit_pkce_state', state);
+      localStorage.setItem('gfit_pkce_verifier', 'verifier');
+      // clientSecret defaults to '' — not set
+
+      let capturedBody: URLSearchParams | null = null;
+      vi.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+        capturedBody = new URLSearchParams(init?.body as string);
+        return Promise.resolve(new Response(
+          JSON.stringify({ access_token: 'tok', expires_in: 3599 }),
+          { status: 200 }
+        ));
+      });
+
+      await service.exchangeCodeForToken('code', state);
+
+      expect(capturedBody!.has('client_secret')).toBe(false);
     });
 
     it('exchangeCodeForToken is a no-op when already connected', async () => {

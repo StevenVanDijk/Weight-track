@@ -16,11 +16,13 @@ class SyncComponent {
   protected readonly weightService = inject(WeightService);
 
   protected readonly clientIdInput = signal('');
+  protected readonly clientSecretInput = signal('');
   protected readonly logsExpanded = signal(false);
 
   constructor() {
-    // Pre-fill the input with any saved client ID
+    // Pre-fill the inputs with any saved credentials
     this.clientIdInput.set(this.gfit.settings().clientId);
+    this.clientSecretInput.set(this.gfit.settings().clientSecret);
 
     // If returning from the PKCE OAuth redirect (/sync?code=...) or a legacy
     // implicit-flow redirect, pick up the token from the current URL.
@@ -57,8 +59,13 @@ class SyncComponent {
     this.gfit.setClientId(this.clientIdInput());
   }
 
+  protected saveClientSecret(): void {
+    this.gfit.setClientSecret(this.clientSecretInput());
+  }
+
   protected async connect(): Promise<void> {
     this.gfit.setClientId(this.clientIdInput());
+    this.gfit.setClientSecret(this.clientSecretInput());
     await this.gfit.connect();
   }
 
