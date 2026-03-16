@@ -50,6 +50,7 @@ export class GoogleFitService {
   private _message = signal<string>('');
   private _importedCount = signal<number>(0);
   private _exportedCount = signal<number>(0);
+  private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly settings = this._settings.asReadonly();
   readonly isConnected = computed(() => this._accessToken() !== null);
@@ -59,6 +60,14 @@ export class GoogleFitService {
   readonly exportedCount = this._exportedCount.asReadonly();
   readonly logs = this._logs.asReadonly();
   readonly connectedLabel = computed(() => this.formatConnectedLabel(this._settings().tokenExpiry));
+
+  constructor() {
+    // If a valid token was restored from localStorage at startup, schedule its refresh.
+    const expiry = this._settings().tokenExpiry;
+    if (this._accessToken() && expiry) {
+      this.scheduleRefresh(expiry);
+    }
+  }
 
   setClientId(clientId: string): void {
     const updated: GoogleFitSettings = { ...this._settings(), clientId: clientId.trim() };
@@ -712,6 +721,7 @@ export class GoogleFitService {
       const valid = this.getValidStoredToken();
       if (valid) {
         this._accessToken.set(valid);
+        this.scheduleRefresh(restored.tokenExpiry!);
         this.log('info', 'init', `Settings restored from IndexedDB — valid token recovered, expires at ${new Date(restored.tokenExpiry!).toISOString()}`);
       } else {
         this.log('info', 'init', 'Settings restored from IndexedDB — token expired or absent');
@@ -796,14 +806,68 @@ export class GoogleFitService {
     this.log('info', 'token', 'Token saved to localStorage and queued for IndexedDB write',
       `Expected: localStorage.getItem("${SETTINGS_KEY}") now contains accessToken and tokenExpiry. Verify in DevTools → Application → Local Storage.`
     );
+    this.scheduleRefresh(expiry);
   }
 
   /** Clears the token from the signal and from persisted settings. */
   private clearToken(): void {
     this.log('info', 'token', 'Token cleared from state and storage');
+    if (this._refreshTimer !== null) {
+      clearTimeout(this._refreshTimer);
+      this._refreshTimer = null;
+    }
     this._settings.set({ ...this._settings(), accessToken: null, tokenExpiry: null });
     this._accessToken.set(null);
     this.saveSettings();
+  }
+
+  /**
+   * Schedules a proactive token refresh (or expiry clear when refresh is
+   * unavailable).
+   *
+   * Browser mode (clientId present, not standalone PWA):
+   *   Fires 5 minutes before expiry and attempts a silent GIS popup refresh.
+   *   If the refresh fails the token remains valid until actual expiry, so a
+   *   second timer is set to clear it then.
+   *
+   * Standalone PWA / no clientId:
+   *   No silent refresh is possible; simply clears the token at expiry so the
+   *   UI never displays a stale connected state.
+   */
+  private scheduleRefresh(expiry: number): void {
+    if (this._refreshTimer !== null) {
+      clearTimeout(this._refreshTimer);
+      this._refreshTimer = null;
+    }
+    const canRefresh = !!this._settings().clientId && !this.isStandalonePwa();
+    if (canRefresh) {
+      const delay = Math.max(0, expiry - 5 * 60_000 - Date.now());
+      this._refreshTimer = setTimeout(() => {
+        this._refreshTimer = null;
+        this.log('info', 'token', 'Proactive token refresh triggered (5 min before expiry)');
+        this.tryRefreshToken(/* clearOnFailure */ false).then(ok => {
+          if (!ok) {
+            // Refresh failed but token is still technically valid; clear at actual expiry.
+            const remaining = expiry - Date.now();
+            this.log('warn', 'token',
+              `Proactive refresh failed — will clear token in ${Math.round(remaining / 1000)}s`);
+            this._refreshTimer = setTimeout(() => {
+              this._refreshTimer = null;
+              this.log('info', 'token', 'Token expired after failed proactive refresh — clearing');
+              this.clearToken();
+            }, Math.max(0, remaining));
+          }
+        });
+      }, delay);
+    } else {
+      // No silent refresh available — clear the token when it actually expires.
+      const delay = Math.max(0, expiry - Date.now());
+      this._refreshTimer = setTimeout(() => {
+        this._refreshTimer = null;
+        this.log('info', 'token', 'Token expired — clearing (no silent refresh available in this mode)');
+        this.clearToken();
+      }, delay);
+    }
   }
 
   /**
@@ -857,8 +921,13 @@ export class GoogleFitService {
    * Attempts a silent token refresh via GIS popup with prompt=''.
    * Only available when not in standalone PWA mode (popup is usable).
    * Returns true if a new token was obtained.
+   *
+   * @param clearOnFailure When true (default), clears the token immediately on
+   *   failure — appropriate for reactive 401 recovery. Pass false for proactive
+   *   pre-expiry refreshes where the token is still valid and should not be
+   *   invalidated until it actually expires.
    */
-  private async tryRefreshToken(): Promise<boolean> {
+  private async tryRefreshToken(clearOnFailure = true): Promise<boolean> {
     const clientId = this._settings().clientId;
     if (!clientId || this.isStandalonePwa()) {
       this.log('warn', 'token', `Silent refresh skipped — ${!clientId ? 'no client ID' : 'standalone PWA mode'}`);
@@ -873,7 +942,7 @@ export class GoogleFitService {
       return true;
     } catch (err: unknown) {
       this.log('warn', 'token', `Silent refresh failed: ${err instanceof Error ? err.message : String(err)}`);
-      this.clearToken();
+      if (clearOnFailure) this.clearToken();
       return false;
     }
   }

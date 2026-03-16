@@ -1682,4 +1682,141 @@ describe('GoogleFitService', () => {
       vi.useRealTimers();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // scheduleRefresh
+  // ---------------------------------------------------------------------------
+
+  describe('scheduleRefresh', () => {
+    it('clears the token at expiry when no clientId is set (no silent refresh)', () => {
+      vi.useFakeTimers();
+      const expiry = Date.now() + 10_000;
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'tok', tokenExpiry: expiry,
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+
+      expect(svc.isConnected()).toBe(true);
+      vi.advanceTimersByTime(10_001);
+      expect(svc.isConnected()).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('clears the token at expiry in standalone PWA mode', () => {
+      vi.useFakeTimers();
+      Object.defineProperty(window, 'matchMedia', {
+        writable: true,
+        value: vi.fn().mockReturnValue({ matches: true }), // standalone PWA
+      });
+      const expiry = Date.now() + 10_000;
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: 'client-id', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'tok', tokenExpiry: expiry,
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+
+      expect(svc.isConnected()).toBe(true);
+      vi.advanceTimersByTime(10_001);
+      expect(svc.isConnected()).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it('attempts silent refresh 5 minutes before expiry in browser mode', async () => {
+      vi.useFakeTimers();
+      const expiresIn = 600; // 10 minutes
+      const expiry = Date.now() + (expiresIn - 60) * 1000; // after 60s safety buffer
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: 'client-id', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'tok', tokenExpiry: expiry,
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+
+      // Stub the GIS script loader and popup to resolve with a new token
+      (window as any).google = {
+        accounts: {
+          oauth2: {
+            initTokenClient: vi.fn().mockReturnValue({
+              requestAccessToken: vi.fn().mockImplementation(function (this: any) {
+                // Simulate async token callback
+                Promise.resolve().then(() =>
+                  (window as any).__gisCallback?.({ access_token: 'new-tok', expires_in: 3599, token_type: 'Bearer' })
+                );
+              }),
+            }),
+          },
+        },
+      };
+      // Patch requestTokenViaPopup to resolve immediately with a new token
+      const refreshSpy = vi.spyOn(svc as any, 'tryRefreshToken').mockResolvedValue(true);
+
+      // Advance to just before the 5-min-before-expiry trigger
+      const bufferMs = expiry - 5 * 60_000 - Date.now();
+      vi.advanceTimersByTime(bufferMs - 1);
+      expect(refreshSpy).not.toHaveBeenCalled();
+
+      // Advance past the trigger
+      vi.advanceTimersByTime(2);
+      await Promise.resolve(); // flush microtasks
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(refreshSpy).toHaveBeenCalledWith(false); // clearOnFailure=false for proactive refresh
+
+      vi.useRealTimers();
+      delete (window as any).google;
+    });
+
+    it('clears token at original expiry if proactive refresh fails', async () => {
+      vi.useFakeTimers();
+      const expiry = Date.now() + 10 * 60_000; // 10 minutes
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: 'client-id', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'tok', tokenExpiry: expiry,
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+
+      vi.spyOn(svc as any, 'tryRefreshToken').mockResolvedValue(false);
+
+      // Advance to 5-min-before-expiry trigger
+      vi.advanceTimersByTime(5 * 60_000 + 1);
+      await Promise.resolve();
+      await Promise.resolve(); // flush the .then() after tryRefreshToken
+
+      // Token should still be present (proactive failure doesn't clear immediately)
+      expect(svc.isConnected()).toBe(true);
+
+      // Advance to actual expiry
+      vi.advanceTimersByTime(5 * 60_000);
+      expect(svc.isConnected()).toBe(false);
+
+      vi.useRealTimers();
+    });
+
+    it('cancels the scheduled refresh when disconnect() is called', () => {
+      vi.useFakeTimers();
+      const expiry = Date.now() + 10_000;
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'tok', tokenExpiry: expiry,
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+
+      svc.disconnect();
+      expect(svc.isConnected()).toBe(false);
+
+      // Advancing past expiry should not throw or change state further
+      vi.advanceTimersByTime(20_000);
+      expect(svc.isConnected()).toBe(false);
+      vi.useRealTimers();
+    });
+  });
 });
