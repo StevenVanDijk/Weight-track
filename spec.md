@@ -338,6 +338,15 @@
 - **US-204** As a user, in standalone PWA mode or when no client ID is configured (where silent refresh is unavailable), the connected state is automatically cleared the moment the token expires so that the UI never shows a stale or expired connection.
 - **US-205** As a user, if I disconnect manually, any pending refresh timer is cancelled immediately so that no background activity occurs after I have ended the session.
 
+### 13.10 Offline Refresh Token & Silent Renewal
+- **US-206** As a user, when I connect to Google Fit via the PKCE flow the app requests `access_type=offline` so that Google issues a refresh token alongside the access token, enabling automatic silent renewal without requiring me to sign in again.
+- **US-207** As a user, if the initial PKCE token exchange returns a refresh token, it is stored securely (localStorage + IndexedDB) alongside the access token so that it persists across page reloads and app restarts.
+- **US-208** As a user, when my access token is about to expire and a refresh token is available, the app silently exchanges the refresh token for a new access token without any user interaction — in both browser and standalone PWA modes — so that my Google Fit connection remains uninterrupted.
+- **US-209** As a user, if Google rotates the refresh token during a silent renewal (returning a new `refresh_token` alongside the new `access_token`), the app stores the rotated token so that future renewals continue to work.
+- **US-210** As a user, if a silent renewal fails with `invalid_grant` (e.g. I have revoked access from my Google account), the stored refresh token is cleared so that the app does not retry a known-invalid token on every subsequent expiry.
+- **US-211** As a user, when I disconnect from Google Fit, both the access token and the refresh token are cleared so that no credentials remain and a future connection requires fresh authorisation.
+- **US-212** As a user, the connection status label on the Sync page updates automatically every minute so that the "X more minutes" countdown stays accurate without requiring a page reload.
+
 ### 13.9 Debug Logging
 - **US-184** As a developer, every key step of the Google Fit flow (OAuth initiation, token receipt, API calls and responses, data source creation) is captured as a structured log entry so that failures can be diagnosed without access to the user's device console.
 - **US-185** As a developer, each log entry contains a timestamp (ISO), severity level (info/warn/error), context label, human-readable message, and an optional detail field for API response bodies.

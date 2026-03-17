@@ -1818,5 +1818,189 @@ describe('GoogleFitService', () => {
       expect(svc.isConnected()).toBe(false);
       vi.useRealTimers();
     });
+
+    it('uses refresh_token grant to silently renew when a refresh token is stored', async () => {
+      vi.useFakeTimers();
+      const expiry = Date.now() + 10 * 60_000;
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: 'client-id', clientSecret: 'secret', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'old-tok', tokenExpiry: expiry, refreshToken: 'stored-refresh-token',
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({ access_token: 'refreshed-tok', expires_in: 3599 }),
+          { status: 200 }
+        )
+      );
+
+      // Trigger the proactive refresh (5 min before expiry)
+      vi.advanceTimersByTime(5 * 60_000 + 1);
+      // Flush the async chain: timer → tryRefreshToken → refreshAccessToken → fetch → persistToken
+      for (let i = 0; i < 10; i++) { await Promise.resolve(); }
+
+      expect(svc.settings().accessToken).toBe('refreshed-tok');
+      expect(svc.isConnected()).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it('uses refresh_token grant in standalone PWA mode', async () => {
+      Object.defineProperty(window, 'matchMedia', {
+        writable: true,
+        value: vi.fn().mockReturnValue({ matches: true }), // standalone PWA
+      });
+      vi.useFakeTimers();
+      const expiry = Date.now() + 10 * 60_000;
+      localStorage.setItem('weight_google_fit', JSON.stringify({
+        clientId: 'client-id', clientSecret: 'secret', lastSyncDate: null, syncedEntryIds: [],
+        accessToken: 'old-tok', tokenExpiry: expiry, refreshToken: 'pwa-refresh-token',
+      }));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({});
+      const svc = TestBed.inject(GoogleFitService);
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({ access_token: 'pwa-refreshed-tok', expires_in: 3599 }),
+          { status: 200 }
+        )
+      );
+
+      vi.advanceTimersByTime(5 * 60_000 + 1);
+      for (let i = 0; i < 10; i++) { await Promise.resolve(); }
+
+      expect(svc.settings().accessToken).toBe('pwa-refreshed-tok');
+      expect(svc.isConnected()).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it('clears refresh token and access token on disconnect()', () => {
+      (service as any).persistToken('tok', 3600);
+      (service as any).storeRefreshToken('my-refresh-token');
+      expect(service.settings().refreshToken).toBe('my-refresh-token');
+
+      service.disconnect();
+
+      expect(service.isConnected()).toBe(false);
+      expect(service.settings().refreshToken).toBeNull();
+      const raw = JSON.parse(localStorage.getItem('weight_google_fit')!);
+      expect(raw.refreshToken).toBeNull();
+    });
+
+    it('clears invalid refresh token on invalid_grant response', async () => {
+      (service as any).persistToken('tok', 3600);
+      (service as any).storeRefreshToken('revoked-refresh-token');
+      service.setClientId('client.apps.googleusercontent.com');
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: 'invalid_grant', error_description: 'Token has been revoked' }),
+          { status: 400 }
+        )
+      );
+
+      const ok = await (service as any).refreshAccessToken();
+
+      expect(ok).toBe(false);
+      expect(service.settings().refreshToken).toBeNull();
+    });
+
+    it('stores rotated refresh token returned by Google during refresh', async () => {
+      (service as any).persistToken('tok', 3600);
+      (service as any).storeRefreshToken('original-refresh-token');
+      service.setClientId('client.apps.googleusercontent.com');
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            access_token: 'new-access-tok',
+            expires_in: 3599,
+            refresh_token: 'rotated-refresh-token',
+          }),
+          { status: 200 }
+        )
+      );
+
+      const ok = await (service as any).refreshAccessToken();
+
+      expect(ok).toBe(true);
+      expect(service.settings().refreshToken).toBe('rotated-refresh-token');
+      expect(service.settings().accessToken).toBe('new-access-tok');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Refresh token from PKCE exchange
+  // ---------------------------------------------------------------------------
+
+  describe('exchangeCodeForToken — refresh token', () => {
+    it('stores refresh_token when returned by token endpoint', async () => {
+      const state = 'rt-state';
+      localStorage.setItem('gfit_pkce_state', state);
+      localStorage.setItem('gfit_pkce_verifier', 'rt-verifier');
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            access_token: 'access-tok',
+            expires_in: 3599,
+            refresh_token: 'my-refresh-token',
+          }),
+          { status: 200 }
+        )
+      );
+
+      await service.exchangeCodeForToken('auth-code', state);
+
+      expect(service.settings().refreshToken).toBe('my-refresh-token');
+      expect(service.isConnected()).toBe(true);
+    });
+
+    it('does not set refresh_token when not returned by token endpoint', async () => {
+      const state = 'no-rt-state';
+      localStorage.setItem('gfit_pkce_state', state);
+      localStorage.setItem('gfit_pkce_verifier', 'no-rt-verifier');
+
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({ access_token: 'access-tok', expires_in: 3599 }),
+          { status: 200 }
+        )
+      );
+
+      await service.exchangeCodeForToken('auth-code', state);
+
+      expect(service.settings().refreshToken).toBeNull();
+      expect(service.isConnected()).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // connectedLabel — clock tick reactivity
+  // ---------------------------------------------------------------------------
+
+  describe('connectedLabel clock reactivity', () => {
+    it('connectedLabel updates when _clockTick changes', () => {
+      // Set expiry 30 minutes from a fixed "now"
+      const fakeNow = Date.now();
+      const expiry = fakeNow + 30 * 60_000;
+      (service as any)._settings.set({
+        ...(service as any)._settings(),
+        accessToken: 'tok',
+        tokenExpiry: expiry,
+      });
+      (service as any)._accessToken.set('tok');
+
+      // At fakeNow, 30 minutes remain
+      (service as any)._clockTick.set(fakeNow);
+      expect(service.connectedLabel()).toContain('30 more minutes');
+
+      // Advance clock by 20 minutes — only 10 minutes remain
+      (service as any)._clockTick.set(fakeNow + 20 * 60_000);
+      expect(service.connectedLabel()).toContain('ten more minutes');
+    });
   });
 });

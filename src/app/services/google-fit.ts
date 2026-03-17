@@ -28,6 +28,12 @@ export interface GoogleFitSettings {
   accessToken: string | null;
   /** Unix timestamp in ms after which accessToken is considered expired. */
   tokenExpiry: number | null;
+  /**
+   * OAuth refresh token obtained when access_type=offline is requested.
+   * Used to silently obtain a new access token without user interaction.
+   * Null when not yet obtained or after disconnect.
+   */
+  refreshToken: string | null;
 }
 
 export interface GfitLogEntry {
@@ -51,6 +57,8 @@ export class GoogleFitService {
   private _importedCount = signal<number>(0);
   private _exportedCount = signal<number>(0);
   private _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Updated every 60 seconds so time-based computed signals (connectedLabel) stay current. */
+  private readonly _clockTick = signal<number>(Date.now());
 
   readonly settings = this._settings.asReadonly();
   readonly isConnected = computed(() => this._accessToken() !== null);
@@ -59,7 +67,7 @@ export class GoogleFitService {
   readonly importedCount = this._importedCount.asReadonly();
   readonly exportedCount = this._exportedCount.asReadonly();
   readonly logs = this._logs.asReadonly();
-  readonly connectedLabel = computed(() => this.formatConnectedLabel(this._settings().tokenExpiry));
+  readonly connectedLabel = computed(() => this.formatConnectedLabel(this._settings().tokenExpiry, this._clockTick()));
 
   constructor() {
     // If a valid token was restored from localStorage at startup, schedule its refresh.
@@ -67,6 +75,8 @@ export class GoogleFitService {
     if (this._accessToken() && expiry) {
       this.scheduleRefresh(expiry);
     }
+    // Tick every 60 seconds so connectedLabel stays accurate as time passes.
+    setInterval(() => this._clockTick.set(Date.now()), 60_000);
   }
 
   setClientId(clientId: string): void {
@@ -394,6 +404,7 @@ export class GoogleFitService {
       this.log('info', 'disconnect', 'No token to revoke or Google OAuth2 API unavailable');
     }
     this.clearToken();
+    this.clearRefreshToken();
     this._status.set('idle');
     this._message.set('Disconnected from Google Fit.');
   }
@@ -714,6 +725,7 @@ export class GoogleFitService {
         syncedEntryIds: Array.isArray(s.syncedEntryIds) ? s.syncedEntryIds : [],
         accessToken: s.accessToken ?? null,
         tokenExpiry: s.tokenExpiry ?? null,
+        refreshToken: (s as any).refreshToken ?? null,
       };
       this._settings.set(restored);
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(restored));
@@ -809,9 +821,13 @@ export class GoogleFitService {
     this.scheduleRefresh(expiry);
   }
 
-  /** Clears the token from the signal and from persisted settings. */
+  /**
+   * Clears the access token from signal and persisted settings.
+   * Does NOT clear the refresh token — callers that want full disconnection
+   * (e.g. disconnect()) should also call clearRefreshToken().
+   */
   private clearToken(): void {
-    this.log('info', 'token', 'Token cleared from state and storage');
+    this.log('info', 'token', 'Access token cleared from state and storage');
     if (this._refreshTimer !== null) {
       clearTimeout(this._refreshTimer);
       this._refreshTimer = null;
@@ -821,16 +837,35 @@ export class GoogleFitService {
     this.saveSettings();
   }
 
+  /** Persists a refresh token to settings (localStorage + IndexedDB). */
+  private storeRefreshToken(refreshToken: string): void {
+    this.log('info', 'token', 'Refresh token stored — silent renewal will be available',
+      'Expected: next token expiry will trigger an automatic silent refresh via refresh_token grant.');
+    this._settings.set({ ...this._settings(), refreshToken });
+    this.saveSettings();
+  }
+
+  /** Clears the refresh token (called on full disconnect). */
+  private clearRefreshToken(): void {
+    this.log('info', 'token', 'Refresh token cleared');
+    this._settings.set({ ...this._settings(), refreshToken: null });
+    this.saveSettings();
+  }
+
   /**
    * Schedules a proactive token refresh (or expiry clear when refresh is
    * unavailable).
    *
-   * Browser mode (clientId present, not standalone PWA):
+   * With a refresh token (any mode):
+   *   Fires 5 minutes before expiry and exchanges the refresh token for a new
+   *   access token via the token endpoint — no user interaction required.
+   *
+   * Browser mode without refresh token (clientId present, not standalone PWA):
    *   Fires 5 minutes before expiry and attempts a silent GIS popup refresh.
    *   If the refresh fails the token remains valid until actual expiry, so a
    *   second timer is set to clear it then.
    *
-   * Standalone PWA / no clientId:
+   * Standalone PWA / no clientId and no refresh token:
    *   No silent refresh is possible; simply clears the token at expiry so the
    *   UI never displays a stale connected state.
    */
@@ -839,7 +874,8 @@ export class GoogleFitService {
       clearTimeout(this._refreshTimer);
       this._refreshTimer = null;
     }
-    const canRefresh = !!this._settings().clientId && !this.isStandalonePwa();
+    const hasRefreshToken = !!this._settings().refreshToken;
+    const canRefresh = hasRefreshToken || (!!this._settings().clientId && !this.isStandalonePwa());
     if (canRefresh) {
       const delay = Math.max(0, expiry - 5 * 60_000 - Date.now());
       this._refreshTimer = setTimeout(() => {
@@ -877,9 +913,9 @@ export class GoogleFitService {
    * - ≥ 60 minutes, same day  → "Connected to Google Fit until HH:MM."
    * - ≥ 60 minutes, tomorrow  → "Connected to Google Fit until tomorrow HH:MM."
    */
-  private formatConnectedLabel(expiry: number | null): string {
+  private formatConnectedLabel(expiry: number | null, now = Date.now()): string {
     if (!expiry) return 'Connected to Google Fit.';
-    const remainingMs = expiry - Date.now();
+    const remainingMs = expiry - now;
     const remainingMin = Math.floor(remainingMs / 60000);
     if (remainingMin < 1) {
       return 'Connected to Google Fit for less than a minute.';
@@ -897,7 +933,7 @@ export class GoogleFitService {
     const hh = String(expiryDate.getHours()).padStart(2, '0');
     const mm = String(expiryDate.getMinutes()).padStart(2, '0');
     const time = `${hh}:${mm}`;
-    const today = new Date();
+    const today = new Date(now);
     // Compare calendar days by zeroing the time portion
     const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const startOfExpiry = new Date(expiryDate.getFullYear(), expiryDate.getMonth(), expiryDate.getDate());
@@ -928,23 +964,97 @@ export class GoogleFitService {
    *   invalidated until it actually expires.
    */
   private async tryRefreshToken(clearOnFailure = true): Promise<boolean> {
+    // Prefer refresh_token grant — works in all modes including standalone PWA.
+    if (this._settings().refreshToken) {
+      this.log('info', 'token', 'Attempting silent token refresh via refresh_token grant');
+      try {
+        const ok = await this.refreshAccessToken();
+        if (ok) return true;
+        this.log('warn', 'token', 'refresh_token grant failed — falling back to GIS popup if available');
+      } catch (err: unknown) {
+        this.log('warn', 'token', `refresh_token grant threw: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    // Fall back to GIS popup (browser mode only — requires window.opener).
     const clientId = this._settings().clientId;
     if (!clientId || this.isStandalonePwa()) {
-      this.log('warn', 'token', `Silent refresh skipped — ${!clientId ? 'no client ID' : 'standalone PWA mode'}`);
+      this.log('warn', 'token', `Silent refresh skipped — ${!clientId ? 'no client ID' : 'standalone PWA mode, no GIS popup available'}`);
+      if (clearOnFailure) this.clearToken();
       return false;
     }
-    this.log('info', 'token', 'Attempting silent token refresh via popup');
+    this.log('info', 'token', 'Attempting silent token refresh via GIS popup');
     try {
       await this.loadGsiScript();
       const { token, expiresIn } = await this.requestTokenViaPopup(clientId);
       this.persistToken(token, expiresIn);
-      this.log('info', 'token', `Silent refresh succeeded, expires in ${expiresIn}s`);
+      this.log('info', 'token', `Silent refresh via GIS popup succeeded, expires in ${expiresIn}s`);
       return true;
     } catch (err: unknown) {
       this.log('warn', 'token', `Silent refresh failed: ${err instanceof Error ? err.message : String(err)}`);
       if (clearOnFailure) this.clearToken();
       return false;
     }
+  }
+
+  /**
+   * Uses a stored refresh token to obtain a new access token from Google's
+   * token endpoint without user interaction.  Works in all modes including
+   * standalone PWA.  Returns true on success.
+   */
+  private async refreshAccessToken(): Promise<boolean> {
+    const refreshToken = this._settings().refreshToken;
+    const clientId = this._settings().clientId;
+    const clientSecret = this._settings().clientSecret;
+
+    if (!refreshToken || !clientId) {
+      this.log('warn', 'token', 'refreshAccessToken() skipped — no refresh token or client ID');
+      return false;
+    }
+
+    const tokenParams: Record<string, string> = {
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId,
+    };
+    if (clientSecret) {
+      tokenParams['client_secret'] = clientSecret;
+    }
+
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(tokenParams),
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.access_token) {
+      const errCode = data.error ?? `HTTP ${res.status}`;
+      const errDesc = data.error_description ?? '(no description)';
+      this.log('error', 'token',
+        `refresh_token grant failed — ${errCode}: ${errDesc}`,
+        errCode === 'invalid_grant'
+          ? 'Refresh token has been revoked or expired. User must reconnect.'
+          : `Full response: ${JSON.stringify(data)}`
+      );
+      if (errCode === 'invalid_grant') {
+        // Refresh token is no longer valid — clear it so we don't retry endlessly.
+        this.clearRefreshToken();
+      }
+      return false;
+    }
+
+    const expiresIn = Number(data.expires_in ?? 3599);
+    this.log('info', 'token',
+      `refresh_token grant succeeded — new access token expires in ${expiresIn}s`,
+      data.refresh_token ? 'Rotated refresh token also received and stored.' : 'No rotated refresh token returned.'
+    );
+    this.persistToken(data.access_token as string, expiresIn);
+    // Google may rotate the refresh token — store the new one if provided.
+    if (data.refresh_token) {
+      this.storeRefreshToken(data.refresh_token as string);
+    }
+    return true;
   }
 
   /** Loads the Google Identity Services script if not already present. */
@@ -1172,12 +1282,19 @@ export class GoogleFitService {
       }
 
       const expiresIn = Number(data.expires_in ?? 3599);
+      const hasRefreshToken = !!data.refresh_token;
       this.log('info', 'pkce',
-        `Token exchange succeeded — expires_in: ${expiresIn}s, token_type: "${data.token_type}"`,
-        `scope: "${data.scope ?? '(not returned)'}". Expected: access_token present, token_type="Bearer", expires_in~3599.`
+        `Token exchange succeeded — expires_in: ${expiresIn}s, token_type: "${data.token_type}", refresh_token: ${hasRefreshToken ? 'received' : 'not returned'}`,
+        `scope: "${data.scope ?? '(not returned)'}". Expected: access_token present, token_type="Bearer", expires_in~3599. ` +
+        (hasRefreshToken
+          ? 'Refresh token received — silent renewal enabled.'
+          : 'No refresh token returned. If access_type=offline was sent, ensure this is a fresh consent (not a re-auth). Google only returns refresh_token on first authorization or after revoking access.')
       );
 
       this.persistToken(data.access_token as string, expiresIn);
+      if (hasRefreshToken) {
+        this.storeRefreshToken(data.refresh_token as string);
+      }
       this._status.set('idle');
       this._message.set('Connected to Google Fit.');
 
@@ -1237,7 +1354,7 @@ export class GoogleFitService {
       code_challenge: pkce.challenge,
       code_challenge_method: 'S256',
       state,
-      access_type: 'online',
+      access_type: 'offline',
     });
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 
@@ -1384,9 +1501,10 @@ export class GoogleFitService {
         syncedEntryIds: Array.isArray(parsed.syncedEntryIds) ? parsed.syncedEntryIds : [],
         accessToken: parsed.accessToken ?? null,
         tokenExpiry: parsed.tokenExpiry ?? null,
+        refreshToken: parsed.refreshToken ?? null,
       };
     } catch {
-      return { clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [], accessToken: null, tokenExpiry: null };
+      return { clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [], accessToken: null, tokenExpiry: null, refreshToken: null };
     }
   }
 
