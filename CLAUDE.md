@@ -51,6 +51,10 @@ All routes are **lazy-loaded**. Routes: `/dashboard`, `/add`, `/chart`, `/histor
 
 No feature, behaviour change, or new component is considered complete without both.
 
+## User Settings Persistence Rule
+
+**All user-configurable settings must be persisted via `WeightService.updateSettings()`.** This includes UI toggles (e.g. Show BMI, Show Projection) and view preferences (e.g. chart period). Settings are stored in `AppSettings` (defined in `src/app/services/weight.ts`) and automatically dual-written to `localStorage` and IndexedDB. New settings fields must include a sensible default in `loadSettings()` and in `restoreFromDb()` (spread over existing stored values so older persisted data migrates cleanly).
+
 **After every successful change, commit and push to the current branch.**
 
 ## Adding an Achievement

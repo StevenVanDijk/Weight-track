@@ -9,6 +9,9 @@ export interface AppSettings {
   goalWeight: number | null;
   reminderEnabled: boolean;
   height: number | null; // height in centimetres
+  showBmi: boolean;
+  showProjection: boolean;
+  chartPeriod: '7d' | '30d' | '90d' | 'all';
 }
 
 @Injectable({
@@ -111,7 +114,8 @@ export class WeightService {
     }
 
     if (settingsRaw !== undefined && settingsRaw && typeof settingsRaw === 'object') {
-      const s = settingsRaw as AppSettings;
+      const defaults: AppSettings = { goalWeight: null, reminderEnabled: false, height: null, showBmi: false, showProjection: true, chartPeriod: '30d' };
+      const s = { ...defaults, ...(settingsRaw as AppSettings) };
       this._settings.set(s);
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
     }
@@ -133,11 +137,12 @@ export class WeightService {
   }
 
   private loadSettings(): AppSettings {
+    const defaults: AppSettings = { goalWeight: null, reminderEnabled: false, height: null, showBmi: false, showProjection: true, chartPeriod: '30d' };
     try {
       const data = localStorage.getItem(SETTINGS_KEY);
-      return data ? JSON.parse(data) : { goalWeight: null, reminderEnabled: false, height: null };
+      return data ? { ...defaults, ...JSON.parse(data) } : defaults;
     } catch {
-      return { goalWeight: null, reminderEnabled: false, height: null };
+      return defaults;
     }
   }
 
