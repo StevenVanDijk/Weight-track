@@ -47,8 +47,22 @@
     </div>
   }
 
+  <!-- Projection toggle -->
+  @if (stats().goalWeight !== null && filteredEntries().length >= 2) {
+    <div class="projection-row">
+      <button
+        class="projection-toggle-btn"
+        [class.active]="showProjection()"
+        (click)="toggleProjection()"
+      >
+        <span class="projection-dot"></span>
+        {{ showProjection() ? 'Hide Projection' : 'Show Projection' }}
+      </button>
+    </div>
+  }
+
   <!-- Days left to goal -->
-  @if (daysLeft() !== null) {
+  @if (showProjection() && daysLeft() !== null) {
     <div class="days-left-card card">
       @if (daysLeft()! > 0) {
         <div class="days-left-value">{{ daysLeft() }}</div>

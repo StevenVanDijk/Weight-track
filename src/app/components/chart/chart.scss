@@ -128,6 +128,49 @@
   }
 }
 
+.projection-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.projection-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+
+  .projection-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(251, 146, 60, 1);
+    opacity: 0.4;
+    transition: opacity 0.2s;
+  }
+
+  &.active {
+    border-color: rgba(251, 146, 60, 0.8);
+    color: rgba(251, 146, 60, 1);
+
+    .projection-dot { opacity: 1; }
+  }
+
+  &:hover:not(.active) {
+    background: var(--bg-card-hover);
+    color: var(--text);
+  }
+}
+
 .bmi-row {
   display: flex;
   align-items: center;

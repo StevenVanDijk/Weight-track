@@ -27,6 +27,7 @@ class ChartComponent implements AfterViewInit {
   protected readonly stats = this.weightService.stats;
   protected selectedPeriod: Period = '30d';
   protected showBmi = signal(false);
+  protected showProjection = signal(true);
   protected readonly periods: { value: Period; label: string }[] = [
     { value: '7d', label: '7D' },
     { value: '30d', label: '30D' },
@@ -122,6 +123,11 @@ class ChartComponent implements AfterViewInit {
     setTimeout(() => this.drawChart(), 10);
   }
 
+  protected toggleProjection(): void {
+    this.showProjection.set(!this.showProjection());
+    setTimeout(() => this.drawChart(), 10);
+  }
+
   /** BMI = weight / heightM². Returns null when heightM is null. */
   protected computeBmi(weight: number, heightM: number): number {
     return weight / (heightM * heightM);
@@ -184,7 +190,8 @@ class ChartComponent implements AfterViewInit {
     const targetDayOff = this.targetDayOff();
 
     // Extend x domain to show projection, capped at 1 year ahead of last entry
-    const xDomain = targetDayOff !== null
+    const showProj = this.showProjection();
+    const xDomain = (showProj && targetDayOff !== null)
       ? Math.min(targetDayOff, lastDayOff + 365)
       : Math.max(lastDayOff, 1);
 
@@ -239,7 +246,7 @@ class ChartComponent implements AfterViewInit {
 
     // ── Trend line ─────────────────────────────────────────────────────────
     const trend = this.trendLine();
-    if (trend) {
+    if (showProj && trend) {
       const trendY0 = yScale(trend.intercept);
       const trendY1 = yScale(trend.intercept + trend.slope * xDomain);
       ctx.strokeStyle = 'rgba(251, 146, 60, 0.8)';
@@ -253,7 +260,7 @@ class ChartComponent implements AfterViewInit {
     }
 
     // ── Target-hit vertical marker ─────────────────────────────────────────
-    if (targetDayOff !== null && targetDayOff <= xDomain) {
+    if (showProj && targetDayOff !== null && targetDayOff <= xDomain) {
       const tx = xScale(targetDayOff);
       ctx.strokeStyle = 'rgba(16, 185, 129, 0.9)';
       ctx.lineWidth   = 1.5;

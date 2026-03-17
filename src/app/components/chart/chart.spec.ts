@@ -230,6 +230,63 @@ describe('ChartComponent', () => {
     });
   });
 
+  // ─── projection toggle ──────────────────────────────────────────────────
+
+  describe('projection toggle', () => {
+    it('showProjection defaults to true', () => {
+      expect((component as any).showProjection()).toBe(true);
+    });
+
+    it('toggleProjection flips showProjection', () => {
+      (component as any).toggleProjection();
+      expect((component as any).showProjection()).toBe(false);
+      (component as any).toggleProjection();
+      expect((component as any).showProjection()).toBe(true);
+    });
+
+    it('drawChart does not throw when projection is hidden', () => {
+      for (let i = 1; i <= 5; i++) {
+        weightService.addEntry({ date: `2024-01-0${i}`, weight: 80 - i });
+      }
+      weightService.updateSettings({ goalWeight: 70 });
+      (component as any).showProjection.set(false);
+      expect(() => (component as any).drawChart()).not.toThrow();
+    });
+
+    it('drawChart does not throw when projection is shown', () => {
+      for (let i = 1; i <= 5; i++) {
+        weightService.addEntry({ date: `2024-01-0${i}`, weight: 80 - i });
+      }
+      weightService.updateSettings({ goalWeight: 70 });
+      (component as any).showProjection.set(true);
+      expect(() => (component as any).drawChart()).not.toThrow();
+    });
+
+    it('days-left card is hidden when showProjection is false', async () => {
+      weightService.updateSettings({ goalWeight: 70 });
+      weightService.addEntry({ date: '2024-01-01', weight: 80 });
+      weightService.addEntry({ date: '2024-02-01', weight: 77 });
+      (component as any).selectPeriod('all');
+      (component as any).showProjection.set(false);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('.days-left-card')).toBeNull();
+    });
+
+    it('days-left card is shown when showProjection is true and goal converges', async () => {
+      weightService.updateSettings({ goalWeight: 70 });
+      weightService.addEntry({ date: '2024-01-01', weight: 80 });
+      weightService.addEntry({ date: '2024-02-01', weight: 77 });
+      (component as any).selectPeriod('all');
+      (component as any).showProjection.set(true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.querySelector('.days-left-card')).not.toBeNull();
+    });
+  });
+
   // ─── goalHitDate / daysLeft ─────────────────────────────────────────────
 
   describe('goalHitDate and daysLeft', () => {
