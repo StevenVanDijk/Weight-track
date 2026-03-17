@@ -106,9 +106,10 @@
 
 ### 4.1 Period Filter
 - **US-057** As a user, I can filter the chart to show the last 7, 30, or 90 days, or all time.
-- **US-058** As a user, the 30-day period is selected by default.
+- **US-058** As a user, the 30-day period is selected by default on first use.
 - **US-059** As a user, selecting a period immediately redraws the chart.
 - **US-060** As a user, entries outside the selected period are excluded from the chart.
+- **US-090** As a user, my selected chart period is persisted across sessions so that I don't have to re-select it each time I open the chart.
 
 ### 4.2 Trend Line
 - **US-063** As a user, a linear-regression trend line is drawn over the chart so that I can see the direction my weight is heading.
@@ -123,6 +124,7 @@
 - **US-080** As a user, when a goal weight is set and there are at least 2 entries, I see a "Show/Hide Projection" toggle button below the chart so that I can choose whether to see the projection overlay.
 - **US-081** As a user, when projection is hidden, the trend line and the goal-hit vertical marker are removed from the chart and the x-axis no longer extends beyond the last entry, so that the chart shows only real data.
 - **US-082** As a user, the projection toggle defaults to "shown" so that new users see the full chart without extra steps.
+- **US-091** As a user, my Show/Hide Projection preference is persisted across sessions so that my choice is remembered.
 
 ### 4.4 Days Left
 - **US-070** As a user, when a goal-hit date is projected, I see "Nr of days left" with the count displayed below the chart so that I have an at-a-glance countdown.
@@ -370,3 +372,4 @@
 - **US-145** As a user, I see my current BMI value displayed as a card next to the toggle when height is set, so I always know my latest BMI at a glance.
 - **US-146** As a user, when height is not set I see a hint linking to the Add Entry screen so that I know how to enable BMI tracking.
 - **US-147** As a user, toggling BMI off reverts the chart to showing only the weight line so that I can focus on weight trends without distraction.
+- **US-148** As a user, my Show/Hide BMI preference is persisted across sessions so that I don't have to re-enable it each visit.

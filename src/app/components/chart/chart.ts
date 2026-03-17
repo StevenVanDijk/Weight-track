@@ -1,4 +1,4 @@
-import { Component, inject, computed, ElementRef, ViewChild, AfterViewInit, effect, signal } from '@angular/core';
+import { Component, inject, computed, ElementRef, ViewChild, AfterViewInit, effect } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { WeightService } from '../../services/weight';
@@ -25,9 +25,9 @@ class ChartComponent implements AfterViewInit {
   protected readonly weightService = inject(WeightService);
   protected readonly allEntries = this.weightService.entries;
   protected readonly stats = this.weightService.stats;
-  protected selectedPeriod: Period = '30d';
-  protected showBmi = signal(false);
-  protected showProjection = signal(true);
+  protected selectedPeriod: Period = this.weightService.settings().chartPeriod;
+  protected readonly showBmi = computed(() => this.weightService.settings().showBmi);
+  protected readonly showProjection = computed(() => this.weightService.settings().showProjection);
   protected readonly periods: { value: Period; label: string }[] = [
     { value: '7d', label: '7D' },
     { value: '30d', label: '30D' },
@@ -115,16 +115,17 @@ class ChartComponent implements AfterViewInit {
 
   protected selectPeriod(period: Period): void {
     this.selectedPeriod = period;
+    this.weightService.updateSettings({ chartPeriod: period });
     setTimeout(() => this.drawChart(), 10);
   }
 
   protected toggleBmi(): void {
-    this.showBmi.set(!this.showBmi());
+    this.weightService.updateSettings({ showBmi: !this.showBmi() });
     setTimeout(() => this.drawChart(), 10);
   }
 
   protected toggleProjection(): void {
-    this.showProjection.set(!this.showProjection());
+    this.weightService.updateSettings({ showProjection: !this.showProjection() });
     setTimeout(() => this.drawChart(), 10);
   }
 

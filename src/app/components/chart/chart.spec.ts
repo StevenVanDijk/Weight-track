@@ -53,6 +53,17 @@ describe('ChartComponent', () => {
     expect((component as any).selectedPeriod).toBe('7d');
   });
 
+  it('selectPeriod persists chartPeriod to settings', () => {
+    (component as any).selectPeriod('90d');
+    expect(weightService.settings().chartPeriod).toBe('90d');
+  });
+
+  it('selectedPeriod is initialised from persisted settings', () => {
+    weightService.updateSettings({ chartPeriod: '7d' });
+    const fixture2 = TestBed.createComponent(ChartComponent);
+    expect((fixture2.componentInstance as any).selectedPeriod).toBe('7d');
+  });
+
   it('filteredEntries returns all entries when period is "all"', () => {
     for (let i = 1; i <= 5; i++) {
       weightService.addEntry({ date: `2024-01-0${i}`, weight: 80 - i });
@@ -197,11 +208,10 @@ describe('ChartComponent', () => {
     });
 
     it('drawChart does not throw when showBmi is true and height is set', () => {
-      weightService.updateSettings({ height: 175 });
+      weightService.updateSettings({ height: 175, showBmi: true });
       for (let i = 1; i <= 5; i++) {
         weightService.addEntry({ date: `2024-01-0${i}`, weight: 80 - i });
       }
-      (component as any).showBmi.set(true);
       expect(() => (component as any).drawChart()).not.toThrow();
     });
 
@@ -209,8 +219,16 @@ describe('ChartComponent', () => {
       for (let i = 1; i <= 3; i++) {
         weightService.addEntry({ date: `2024-01-0${i}`, weight: 80 - i });
       }
-      (component as any).showBmi.set(true);
+      weightService.updateSettings({ showBmi: true });
       expect(() => (component as any).drawChart()).not.toThrow();
+    });
+
+    it('toggleBmi persists showBmi to settings', () => {
+      expect(weightService.settings().showBmi).toBe(false);
+      (component as any).toggleBmi();
+      expect(weightService.settings().showBmi).toBe(true);
+      (component as any).toggleBmi();
+      expect(weightService.settings().showBmi).toBe(false);
     });
   });
 
@@ -248,8 +266,7 @@ describe('ChartComponent', () => {
       for (let i = 1; i <= 5; i++) {
         weightService.addEntry({ date: `2024-01-0${i}`, weight: 80 - i });
       }
-      weightService.updateSettings({ goalWeight: 70 });
-      (component as any).showProjection.set(false);
+      weightService.updateSettings({ goalWeight: 70, showProjection: false });
       expect(() => (component as any).drawChart()).not.toThrow();
     });
 
@@ -257,17 +274,15 @@ describe('ChartComponent', () => {
       for (let i = 1; i <= 5; i++) {
         weightService.addEntry({ date: `2024-01-0${i}`, weight: 80 - i });
       }
-      weightService.updateSettings({ goalWeight: 70 });
-      (component as any).showProjection.set(true);
+      weightService.updateSettings({ goalWeight: 70, showProjection: true });
       expect(() => (component as any).drawChart()).not.toThrow();
     });
 
     it('days-left card is hidden when showProjection is false', async () => {
-      weightService.updateSettings({ goalWeight: 70 });
+      weightService.updateSettings({ goalWeight: 70, showProjection: false });
       weightService.addEntry({ date: '2024-01-01', weight: 80 });
       weightService.addEntry({ date: '2024-02-01', weight: 77 });
       (component as any).selectPeriod('all');
-      (component as any).showProjection.set(false);
       fixture.detectChanges();
       await fixture.whenStable();
       const el: HTMLElement = fixture.nativeElement;
@@ -275,15 +290,22 @@ describe('ChartComponent', () => {
     });
 
     it('days-left card is shown when showProjection is true and goal converges', async () => {
-      weightService.updateSettings({ goalWeight: 70 });
+      weightService.updateSettings({ goalWeight: 70, showProjection: true });
       weightService.addEntry({ date: '2024-01-01', weight: 80 });
       weightService.addEntry({ date: '2024-02-01', weight: 77 });
       (component as any).selectPeriod('all');
-      (component as any).showProjection.set(true);
       fixture.detectChanges();
       await fixture.whenStable();
       const el: HTMLElement = fixture.nativeElement;
       expect(el.querySelector('.days-left-card')).not.toBeNull();
+    });
+
+    it('toggleProjection persists showProjection to settings', () => {
+      expect(weightService.settings().showProjection).toBe(true);
+      (component as any).toggleProjection();
+      expect(weightService.settings().showProjection).toBe(false);
+      (component as any).toggleProjection();
+      expect(weightService.settings().showProjection).toBe(true);
     });
   });
 
