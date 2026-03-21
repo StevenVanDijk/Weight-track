@@ -119,6 +119,39 @@
     </a>
   </section>
 
+  <!-- Blood Pressure Card -->
+  <section class="bp-section card">
+    <div class="bp-section-header">
+      <div class="bp-title-row">
+        <span class="material-icons bp-heart-icon">favorite</span>
+        <h3 class="section-title">Blood Pressure</h3>
+      </div>
+      <a routerLink="/history" class="view-all">History</a>
+    </div>
+
+    @if (bpStats().latest) {
+      <div class="bp-reading-row">
+        <div class="bp-reading">
+          <span class="bp-value">{{ bpStats().latest!.systolic }}</span>
+          <span class="bp-sep">/</span>
+          <span class="bp-value">{{ bpStats().latest!.diastolic }}</span>
+          <span class="bp-unit">mmHg</span>
+        </div>
+        <div class="bp-avg-col">
+          <div class="bp-avg-label">Avg</div>
+          <div class="bp-avg-val">{{ bpStats().avgSystolic }}/{{ bpStats().avgDiastolic }}</div>
+        </div>
+      </div>
+    } @else {
+      <div class="bp-empty">
+        <p>No readings yet.</p>
+        <a routerLink="/add" class="bp-log-link">
+          <span class="material-icons">add</span> Log blood pressure
+        </a>
+      </div>
+    }
+  </section>
+
   <!-- Recent Entries -->
   <section class="recent-section">
     <div class="section-header">

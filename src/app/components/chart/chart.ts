@@ -1,12 +1,15 @@
-import { Component, inject, computed, ElementRef, ViewChild, AfterViewInit, effect } from '@angular/core';
+import { Component, inject, computed, signal, ElementRef, ViewChild, AfterViewInit, effect } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { WeightService } from '../../services/weight';
+import { BloodPressureService } from '../../services/blood-pressure';
 import { WeightEntry } from '../../models/weight-entry';
+import { BloodPressureEntry } from '../../models/blood-pressure-entry';
 
 export { ChartComponent };
 
 type Period = '7d' | '30d' | '90d' | 'all';
+type ChartMode = 'weight' | 'bp';
 
 interface TrendResult {
   slope: number;     // kg per day
@@ -23,9 +26,13 @@ class ChartComponent implements AfterViewInit {
   @ViewChild('canvas') canvasRef!: ElementRef<HTMLCanvasElement>;
 
   protected readonly weightService = inject(WeightService);
+  protected readonly bpService = inject(BloodPressureService);
   protected readonly allEntries = this.weightService.entries;
+  protected readonly allBpEntries = this.bpService.entries;
   protected readonly stats = this.weightService.stats;
+  protected readonly bpStats = this.bpService.stats;
   protected selectedPeriod: Period = this.weightService.settings().chartPeriod;
+  protected chartMode = signal<ChartMode>('weight');
   protected readonly showBmi = computed(() => this.weightService.settings().showBmi);
   protected readonly showProjection = computed(() => this.weightService.settings().showProjection);
   protected readonly periods: { value: Period; label: string }[] = [
@@ -42,6 +49,16 @@ class ChartComponent implements AfterViewInit {
 
   protected filteredEntries = computed(() => {
     const entries = this.allEntries();
+    if (this.selectedPeriod === 'all') return entries;
+    const days = this.selectedPeriod === '7d' ? 7 : this.selectedPeriod === '30d' ? 30 : 90;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+    return entries.filter(e => e.date >= cutoffStr);
+  });
+
+  protected filteredBpEntries = computed(() => {
+    const entries = this.allBpEntries();
     if (this.selectedPeriod === 'all') return entries;
     const days = this.selectedPeriod === '7d' ? 7 : this.selectedPeriod === '30d' ? 30 : 90;
     const cutoff = new Date();
@@ -102,6 +119,7 @@ class ChartComponent implements AfterViewInit {
   constructor() {
     effect(() => {
       const _ = this.allEntries();
+      const __ = this.allBpEntries();
       if (this.initialized) {
         setTimeout(() => this.drawChart(), 10);
       }
@@ -116,6 +134,11 @@ class ChartComponent implements AfterViewInit {
   protected selectPeriod(period: Period): void {
     this.selectedPeriod = period;
     this.weightService.updateSettings({ chartPeriod: period });
+    setTimeout(() => this.drawChart(), 10);
+  }
+
+  protected setChartMode(mode: ChartMode): void {
+    this.chartMode.set(mode);
     setTimeout(() => this.drawChart(), 10);
   }
 
@@ -153,6 +176,14 @@ class ChartComponent implements AfterViewInit {
   }
 
   protected drawChart(): void {
+    if (this.chartMode() === 'bp') {
+      this.drawBpChart();
+    } else {
+      this.drawWeightChart();
+    }
+  }
+
+  private drawWeightChart(): void {
     const canvas = this.canvasRef?.nativeElement;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -401,5 +432,200 @@ class ChartComponent implements AfterViewInit {
         ctx.stroke();
       });
     }
+  }
+
+  private drawBpChart(): void {
+    const canvas = this.canvasRef?.nativeElement;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const entries = this.filteredBpEntries();
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = rect.width  * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+
+    const W = rect.width;
+    const H = rect.height;
+    const pad = { top: 24, right: 20, bottom: 40, left: 50 };
+    const chartW = W - pad.left - pad.right;
+    const chartH = H - pad.top  - pad.bottom;
+
+    ctx.clearRect(0, 0, W, H);
+
+    if (entries.length < 2) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '14px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Not enough data to display chart', W / 2, H / 2);
+      return;
+    }
+
+    const firstMs = new Date(entries[0].date + 'T00:00:00').getTime();
+    const lastMs  = new Date(entries[entries.length - 1].date + 'T00:00:00').getTime();
+    const lastDayOff = Math.max((lastMs - firstMs) / 86400000, 1);
+
+    const entryDayOffset = (e: BloodPressureEntry) =>
+      (new Date(e.date + 'T00:00:00').getTime() - firstMs) / 86400000;
+    const xScale = (dayOff: number) => pad.left + (dayOff / lastDayOff) * chartW;
+
+    // ── Y range (mmHg, both systolic and diastolic) ────────────────────────
+    const allVals = [...entries.map(e => e.systolic), ...entries.map(e => e.diastolic)];
+    const minV  = Math.min(...allVals);
+    const maxV  = Math.max(...allVals);
+    const range = maxV - minV || 1;
+    const yPad  = range * 0.15;
+    const yMin  = minV - yPad;
+    const yMax  = maxV + yPad;
+    const yScale = (v: number) => pad.top + chartH - ((v - yMin) / (yMax - yMin)) * chartH;
+
+    // ── Grid lines ─────────────────────────────────────────────────────────
+    ctx.strokeStyle = 'rgba(51, 65, 85, 0.6)';
+    ctx.lineWidth = 1;
+    const gridCount = 4;
+    for (let i = 0; i <= gridCount; i++) {
+      const y   = pad.top + (chartH / gridCount) * i;
+      const val = yMax - ((yMax - yMin) / gridCount) * i;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(pad.left + chartW, y);
+      ctx.stroke();
+      ctx.fillStyle  = '#94a3b8';
+      ctx.font       = '11px Inter, sans-serif';
+      ctx.textAlign  = 'right';
+      ctx.fillText(Math.round(val).toString(), pad.left - 8, y + 4);
+    }
+
+    // ── Target lines ────────────────────────────────────────────────────────
+    const bpSettings = this.bpService.settings();
+    if (bpSettings.targetSystolic != null && bpSettings.targetSystolic >= yMin && bpSettings.targetSystolic <= yMax) {
+      const ty = yScale(bpSettings.targetSystolic);
+      ctx.strokeStyle = 'rgba(129, 140, 248, 0.5)';
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pad.left, ty);
+      ctx.lineTo(pad.left + chartW, ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle  = '#818cf8';
+      ctx.font       = '10px Inter, sans-serif';
+      ctx.textAlign  = 'left';
+      ctx.fillText(`Target sys ${bpSettings.targetSystolic}`, pad.left + 4, ty - 4);
+    }
+
+    if (bpSettings.targetDiastolic != null && bpSettings.targetDiastolic >= yMin && bpSettings.targetDiastolic <= yMax) {
+      const ty = yScale(bpSettings.targetDiastolic);
+      ctx.strokeStyle = 'rgba(244, 114, 182, 0.5)';
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pad.left, ty);
+      ctx.lineTo(pad.left + chartW, ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle  = '#f472b6';
+      ctx.font       = '10px Inter, sans-serif';
+      ctx.textAlign  = 'left';
+      ctx.fillText(`Target dia ${bpSettings.targetDiastolic}`, pad.left + 4, ty - 4);
+    }
+
+    // ── Systolic gradient fill ──────────────────────────────────────────────
+    const sysGrad = ctx.createLinearGradient(0, pad.top, 0, pad.top + chartH);
+    sysGrad.addColorStop(0, 'rgba(129, 140, 248, 0.25)');
+    sysGrad.addColorStop(1, 'rgba(129, 140, 248, 0)');
+
+    ctx.beginPath();
+    ctx.moveTo(xScale(entryDayOffset(entries[0])), yScale(entries[0].systolic));
+    for (let i = 1; i < entries.length; i++) {
+      const x0 = xScale(entryDayOffset(entries[i - 1])), y0 = yScale(entries[i - 1].systolic);
+      const x1 = xScale(entryDayOffset(entries[i])),     y1 = yScale(entries[i].systolic);
+      const cpx = (x0 + x1) / 2;
+      ctx.bezierCurveTo(cpx, y0, cpx, y1, x1, y1);
+    }
+    ctx.lineTo(xScale(entryDayOffset(entries[entries.length - 1])), pad.top + chartH);
+    ctx.lineTo(xScale(entryDayOffset(entries[0])),                  pad.top + chartH);
+    ctx.closePath();
+    ctx.fillStyle = sysGrad;
+    ctx.fill();
+
+    // ── Systolic line ──────────────────────────────────────────────────────
+    ctx.beginPath();
+    ctx.moveTo(xScale(entryDayOffset(entries[0])), yScale(entries[0].systolic));
+    for (let i = 1; i < entries.length; i++) {
+      const x0 = xScale(entryDayOffset(entries[i - 1])), y0 = yScale(entries[i - 1].systolic);
+      const x1 = xScale(entryDayOffset(entries[i])),     y1 = yScale(entries[i].systolic);
+      const cpx = (x0 + x1) / 2;
+      ctx.bezierCurveTo(cpx, y0, cpx, y1, x1, y1);
+    }
+    ctx.strokeStyle = '#818cf8';
+    ctx.lineWidth   = 2.5;
+    ctx.lineJoin    = 'round';
+    ctx.stroke();
+
+    // ── Diastolic line ─────────────────────────────────────────────────────
+    ctx.beginPath();
+    ctx.moveTo(xScale(entryDayOffset(entries[0])), yScale(entries[0].diastolic));
+    for (let i = 1; i < entries.length; i++) {
+      const x0 = xScale(entryDayOffset(entries[i - 1])), y0 = yScale(entries[i - 1].diastolic);
+      const x1 = xScale(entryDayOffset(entries[i])),     y1 = yScale(entries[i].diastolic);
+      const cpx = (x0 + x1) / 2;
+      ctx.bezierCurveTo(cpx, y0, cpx, y1, x1, y1);
+    }
+    ctx.strokeStyle = '#f472b6';
+    ctx.lineWidth   = 2.5;
+    ctx.lineJoin    = 'round';
+    ctx.stroke();
+
+    // ── Data points ────────────────────────────────────────────────────────
+    entries.forEach(e => {
+      const x = xScale(entryDayOffset(e));
+      // Systolic
+      ctx.beginPath();
+      ctx.arc(x, yScale(e.systolic), 4, 0, Math.PI * 2);
+      ctx.fillStyle   = '#818cf8';
+      ctx.fill();
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth   = 2;
+      ctx.stroke();
+      // Diastolic
+      ctx.beginPath();
+      ctx.arc(x, yScale(e.diastolic), 4, 0, Math.PI * 2);
+      ctx.fillStyle   = '#f472b6';
+      ctx.fill();
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth   = 2;
+      ctx.stroke();
+    });
+
+    // ── X axis labels ──────────────────────────────────────────────────────
+    const labelStep = Math.max(1, Math.floor(entries.length / 5));
+    ctx.fillStyle = '#94a3b8';
+    ctx.font      = '10px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    entries.forEach((e, i) => {
+      if (i % labelStep === 0 || i === entries.length - 1) {
+        const x    = xScale(entryDayOffset(e));
+        const date = new Date(e.date + 'T00:00:00');
+        ctx.fillText(`${date.getDate()}/${date.getMonth() + 1}`, x, pad.top + chartH + 16);
+      }
+    });
+
+    // ── Unit label ─────────────────────────────────────────────────────────
+    ctx.fillStyle = '#94a3b8';
+    ctx.font      = '10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('mmHg', 4, pad.top - 6);
+
+    // ── Legend ─────────────────────────────────────────────────────────────
+    ctx.fillStyle = '#818cf8';
+    ctx.font      = 'bold 10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('■ Systolic', pad.left + 4, pad.top + 14);
+    ctx.fillStyle = '#f472b6';
+    ctx.fillText('■ Diastolic', pad.left + 75, pad.top + 14);
   }
 }

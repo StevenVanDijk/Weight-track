@@ -1,7 +1,22 @@
 <div class="chart-page fade-in">
   <div class="page-header">
     <h2>Progress Chart</h2>
-    <p class="subtitle">Your weight journey over time</p>
+    <p class="subtitle">
+      @if (chartMode() === 'weight') { Your weight journey over time }
+      @else { Blood pressure readings over time }
+    </p>
+  </div>
+
+  <!-- Chart mode toggle -->
+  <div class="chart-mode-tabs">
+    <button class="chart-mode-tab" [class.active]="chartMode() === 'weight'" (click)="setChartMode('weight')">
+      <span class="material-icons">monitor_weight</span>
+      Weight
+    </button>
+    <button class="chart-mode-tab" [class.active]="chartMode() === 'bp'" (click)="setChartMode('bp')">
+      <span class="material-icons">favorite</span>
+      Blood Pressure
+    </button>
   </div>
 
   <!-- Period selector -->
@@ -22,84 +37,116 @@
     <canvas #canvas class="weight-canvas"></canvas>
   </div>
 
-  <!-- BMI toggle + current BMI -->
-  @if (heightM() !== null) {
-    <div class="bmi-row">
-      <button
-        class="bmi-toggle-btn"
-        [class.active]="showBmi()"
-        (click)="toggleBmi()"
-      >
-        <span class="bmi-dot"></span>
-        {{ showBmi() ? 'Hide BMI' : 'Show BMI' }}
-      </button>
-      @if (currentBmi() !== null) {
-        <div class="current-bmi card">
-          <div class="bmi-value">{{ currentBmi() | number:'1.1-1' }}</div>
-          <div class="bmi-label">Current BMI</div>
+  <!-- Weight-mode extras -->
+  @if (chartMode() === 'weight') {
+    <!-- BMI toggle + current BMI -->
+    @if (heightM() !== null) {
+      <div class="bmi-row">
+        <button
+          class="bmi-toggle-btn"
+          [class.active]="showBmi()"
+          (click)="toggleBmi()"
+        >
+          <span class="bmi-dot"></span>
+          {{ showBmi() ? 'Hide BMI' : 'Show BMI' }}
+        </button>
+        @if (currentBmi() !== null) {
+          <div class="current-bmi card">
+            <div class="bmi-value">{{ currentBmi() | number:'1.1-1' }}</div>
+            <div class="bmi-label">Current BMI</div>
+          </div>
+        }
+      </div>
+    } @else {
+      <div class="bmi-hint">
+        <span class="material-icons">info</span>
+        <span>Set your height in <a routerLink="/add">Add Entry</a> to enable the BMI chart.</span>
+      </div>
+    }
+
+    <!-- Projection toggle -->
+    @if (stats().goalWeight !== null && filteredEntries().length >= 2) {
+      <div class="projection-row">
+        <button
+          class="projection-toggle-btn"
+          [class.active]="showProjection()"
+          (click)="toggleProjection()"
+        >
+          <span class="projection-dot"></span>
+          {{ showProjection() ? 'Hide Projection' : 'Show Projection' }}
+        </button>
+      </div>
+    }
+
+    <!-- Days left to goal -->
+    @if (showProjection() && daysLeft() !== null) {
+      <div class="days-left-card card">
+        @if (daysLeft()! > 0) {
+          <div class="days-left-value">{{ daysLeft() }}</div>
+          <div class="days-left-label">Nr of days left</div>
+        } @else {
+          <div class="days-left-value goal-reached">Goal reached!</div>
+          <div class="days-left-label">Keep it up</div>
+        }
+      </div>
+    }
+
+    <!-- Summary stats -->
+    @if (filteredEntries().length >= 2) {
+      <div class="summary-row">
+        <div class="summary-card card">
+          <div class="summary-value">{{ filteredEntries()[0].weight | number:'1.1-1' }}</div>
+          <div class="summary-label">Start</div>
         </div>
-      }
-    </div>
-  } @else {
-    <div class="bmi-hint">
-      <span class="material-icons">info</span>
-      <span>Set your height in <a routerLink="/add">Add Entry</a> to enable the BMI chart.</span>
-    </div>
-  }
-
-  <!-- Projection toggle -->
-  @if (stats().goalWeight !== null && filteredEntries().length >= 2) {
-    <div class="projection-row">
-      <button
-        class="projection-toggle-btn"
-        [class.active]="showProjection()"
-        (click)="toggleProjection()"
-      >
-        <span class="projection-dot"></span>
-        {{ showProjection() ? 'Hide Projection' : 'Show Projection' }}
-      </button>
-    </div>
-  }
-
-  <!-- Days left to goal -->
-  @if (showProjection() && daysLeft() !== null) {
-    <div class="days-left-card card">
-      @if (daysLeft()! > 0) {
-        <div class="days-left-value">{{ daysLeft() }}</div>
-        <div class="days-left-label">Nr of days left</div>
-      } @else {
-        <div class="days-left-value goal-reached">Goal reached!</div>
-        <div class="days-left-label">Keep it up</div>
-      }
-    </div>
-  }
-
-  <!-- Summary stats -->
-  @if (filteredEntries().length >= 2) {
-    <div class="summary-row">
-      <div class="summary-card card">
-        <div class="summary-value">{{ filteredEntries()[0].weight | number:'1.1-1' }}</div>
-        <div class="summary-label">Start</div>
-      </div>
-      <div class="summary-card card">
-        <div class="summary-value">{{ filteredEntries()[filteredEntries().length - 1].weight | number:'1.1-1' }}</div>
-        <div class="summary-label">Latest</div>
-      </div>
-      <div class="summary-card card"
-        [class.positive]="(filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) > 0"
-        [class.negative]="(filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) < 0">
-        <div class="summary-value">
-          {{ (filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) > 0 ? '+' : '' }}{{ (filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) | number:'1.1-1' }}
+        <div class="summary-card card">
+          <div class="summary-value">{{ filteredEntries()[filteredEntries().length - 1].weight | number:'1.1-1' }}</div>
+          <div class="summary-label">Latest</div>
         </div>
-        <div class="summary-label">Change</div>
+        <div class="summary-card card"
+          [class.positive]="(filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) > 0"
+          [class.negative]="(filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) < 0">
+          <div class="summary-value">
+            {{ (filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) > 0 ? '+' : '' }}{{ (filteredEntries()[filteredEntries().length-1].weight - filteredEntries()[0].weight) | number:'1.1-1' }}
+          </div>
+          <div class="summary-label">Change</div>
+        </div>
       </div>
-    </div>
+    }
+
+    @if (allEntries().length < 2) {
+      <div class="no-data card">
+        <span class="material-icons">show_chart</span>
+        <p>Add at least 2 weight entries to see your chart.</p>
+      </div>
+    }
   }
 
-  @if (allEntries().length < 2) {
-    <div class="no-data card">
-      <span class="material-icons">show_chart</span>
-      <p>Add at least 2 weight entries to see your chart.</p>
-    </div>
+  <!-- BP-mode extras -->
+  @if (chartMode() === 'bp') {
+    @if (filteredBpEntries().length >= 2) {
+      <div class="summary-row">
+        <div class="summary-card card">
+          <div class="summary-value bp-sys">{{ filteredBpEntries()[filteredBpEntries().length - 1].systolic }}</div>
+          <div class="summary-label">Latest Sys</div>
+        </div>
+        <div class="summary-card card">
+          <div class="summary-value bp-dia">{{ filteredBpEntries()[filteredBpEntries().length - 1].diastolic }}</div>
+          <div class="summary-label">Latest Dia</div>
+        </div>
+        @if (bpStats().avgSystolic !== null) {
+          <div class="summary-card card">
+            <div class="summary-value">{{ bpStats().avgSystolic }}/{{ bpStats().avgDiastolic }}</div>
+            <div class="summary-label">Average</div>
+          </div>
+        }
+      </div>
+    }
+
+    @if (allBpEntries().length < 2) {
+      <div class="no-data card">
+        <span class="material-icons">favorite_border</span>
+        <p>Add at least 2 blood pressure readings to see your chart.</p>
+      </div>
+    }
   }
 </div>

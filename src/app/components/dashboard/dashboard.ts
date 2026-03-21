@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { WeightService } from '../../services/weight';
 import { GamificationService } from '../../services/gamification';
+import { BloodPressureService } from '../../services/blood-pressure';
 
 export { DashboardComponent };
 
@@ -15,6 +16,8 @@ export { DashboardComponent };
 class DashboardComponent {
   protected readonly weightService = inject(WeightService);
   protected readonly gam = inject(GamificationService);
+  protected readonly bpService = inject(BloodPressureService);
+  protected readonly bpStats = this.bpService.stats;
   protected readonly stats = this.weightService.stats;
   protected readonly entries = this.weightService.entries;
   protected readonly gamState = this.gam.state;

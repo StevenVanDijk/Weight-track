@@ -1,111 +1,239 @@
 <div class="add-entry fade-in">
   <div class="page-header">
-    <h2>Log Weight</h2>
+    <h2>Log Entry</h2>
     <p class="subtitle">Record today's measurement</p>
   </div>
 
-  @if (saved()) {
-    <div class="success-toast">
-      <span class="material-icons">check_circle</span>
-      Entry saved successfully!
-    </div>
+  <!-- Mode tabs -->
+  <div class="mode-tabs">
+    <button class="mode-tab" [class.active]="mode() === 'weight'" (click)="setMode('weight')">
+      <span class="material-icons">monitor_weight</span>
+      Weight
+    </button>
+    <button class="mode-tab" [class.active]="mode() === 'bp'" (click)="setMode('bp')">
+      <span class="material-icons">favorite</span>
+      Blood Pressure
+    </button>
+  </div>
+
+  <!-- ── Weight form ── -->
+  @if (mode() === 'weight') {
+    @if (saved()) {
+      <div class="success-toast">
+        <span class="material-icons">check_circle</span>
+        Entry saved successfully!
+      </div>
+    }
+
+    <form class="entry-form" (ngSubmit)="submit()" #f="ngForm">
+      <!-- Weight Input -->
+      <div class="weight-input-group">
+        <label>Weight <span class="unit-label">kg</span></label>
+        <input
+          type="number"
+          [(ngModel)]="weightInput"
+          name="weight"
+          step="0.1"
+          min="1"
+          max="500"
+          placeholder="0.0"
+          class="weight-field"
+          autofocus
+          required
+        />
+        @if (lastWeight() !== null) {
+          <div class="weight-slider-wrap">
+            <span class="slider-bound">{{ sliderMin() }}</span>
+            <input
+              type="range"
+              [(ngModel)]="sliderValue"
+              name="weightSlider"
+              [min]="sliderMin()"
+              [max]="sliderMax()"
+              step="0.1"
+              class="weight-slider"
+              aria-label="Weight slider"
+            />
+            <span class="slider-bound">{{ sliderMax() }}</span>
+          </div>
+        }
+        @if (error()) {
+          <span class="error-msg">{{ error() }}</span>
+        }
+      </div>
+
+      <!-- Date -->
+      <div class="form-group">
+        <label for="date">Date</label>
+        <input
+          id="date"
+          type="date"
+          [(ngModel)]="dateInput"
+          name="date"
+          [max]="date()"
+          required
+        />
+      </div>
+
+      <!-- Height -->
+      <div class="form-group">
+        <label for="height">Height in cm (optional, enables BMI chart)</label>
+        <input
+          id="height"
+          type="number"
+          [(ngModel)]="heightInput"
+          name="height"
+          step="1"
+          min="50"
+          max="300"
+          placeholder="e.g. 175"
+        />
+      </div>
+
+      <!-- Goal Weight -->
+      <div class="form-group">
+        <label for="goal">Goal Weight in kg (optional)</label>
+        <input
+          id="goal"
+          type="number"
+          [(ngModel)]="goalWeightInput"
+          name="goal"
+          step="0.1"
+          min="1"
+          max="500"
+          placeholder="e.g. 70"
+        />
+      </div>
+
+      <!-- Note -->
+      <div class="form-group">
+        <label for="note">Note (optional)</label>
+        <textarea
+          id="note"
+          [(ngModel)]="noteInput"
+          name="note"
+          placeholder="How are you feeling today?"
+          rows="2"
+        ></textarea>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-full submit-btn">
+        <span class="material-icons">save</span>
+        Save Entry
+      </button>
+    </form>
   }
 
-  <form class="entry-form" (ngSubmit)="submit()" #f="ngForm">
-    <!-- Weight Input -->
-    <div class="weight-input-group">
-      <label>Weight <span class="unit-label">kg</span></label>
-      <input
-        type="number"
-        [(ngModel)]="weightInput"
-        name="weight"
-        step="0.1"
-        min="1"
-        max="500"
-        placeholder="0.0"
-        class="weight-field"
-        autofocus
-        required
-      />
-      @if (lastWeight() !== null) {
-        <div class="weight-slider-wrap">
-          <span class="slider-bound">{{ sliderMin() }}</span>
+  <!-- ── Blood Pressure form ── -->
+  @if (mode() === 'bp') {
+    @if (bpSaved()) {
+      <div class="success-toast">
+        <span class="material-icons">check_circle</span>
+        Blood pressure saved!
+      </div>
+    }
+
+    <form class="entry-form" (ngSubmit)="submit()" #bpForm="ngForm">
+      <!-- Systolic / Diastolic -->
+      <div class="bp-input-group">
+        <div class="bp-field-wrap">
+          <label for="systolic">Systolic <span class="unit-label">mmHg</span></label>
           <input
-            type="range"
-            [(ngModel)]="sliderValue"
-            name="weightSlider"
-            [min]="sliderMin()"
-            [max]="sliderMax()"
-            step="0.1"
-            class="weight-slider"
-            aria-label="Weight slider"
+            id="systolic"
+            type="number"
+            [(ngModel)]="systolicInput"
+            name="systolic"
+            step="1"
+            min="60"
+            max="250"
+            placeholder="120"
+            class="weight-field"
+            autofocus
+            required
           />
-          <span class="slider-bound">{{ sliderMax() }}</span>
         </div>
+        <div class="bp-separator">
+          <span class="bp-slash">/</span>
+        </div>
+        <div class="bp-field-wrap">
+          <label for="diastolic">Diastolic <span class="unit-label">mmHg</span></label>
+          <input
+            id="diastolic"
+            type="number"
+            [(ngModel)]="diastolicInput"
+            name="diastolic"
+            step="1"
+            min="30"
+            max="150"
+            placeholder="80"
+            class="weight-field"
+            required
+          />
+        </div>
+      </div>
+      @if (bpError()) {
+        <span class="error-msg">{{ bpError() }}</span>
       }
-      @if (error()) {
-        <span class="error-msg">{{ error() }}</span>
-      }
-    </div>
 
-    <!-- Date -->
-    <div class="form-group">
-      <label for="date">Date</label>
-      <input
-        id="date"
-        type="date"
-        [(ngModel)]="dateInput"
-        name="date"
-        [max]="date()"
-        required
-      />
-    </div>
+      <!-- Date -->
+      <div class="form-group">
+        <label for="bpDate">Date</label>
+        <input
+          id="bpDate"
+          type="date"
+          [(ngModel)]="bpDateInput"
+          name="bpDate"
+          [max]="bpDate()"
+          required
+        />
+      </div>
 
-    <!-- Height -->
-    <div class="form-group">
-      <label for="height">Height in cm (optional, enables BMI chart)</label>
-      <input
-        id="height"
-        type="number"
-        [(ngModel)]="heightInput"
-        name="height"
-        step="1"
-        min="50"
-        max="300"
-        placeholder="e.g. 175"
-      />
-    </div>
+      <!-- Target BP -->
+      <div class="bp-target-group">
+        <div class="form-group">
+          <label for="targetSystolic">Target Systolic in mmHg (optional)</label>
+          <input
+            id="targetSystolic"
+            type="number"
+            [(ngModel)]="targetSystolicInput"
+            name="targetSystolic"
+            step="1"
+            min="60"
+            max="250"
+            placeholder="e.g. 120"
+          />
+        </div>
+        <div class="form-group">
+          <label for="targetDiastolic">Target Diastolic in mmHg (optional)</label>
+          <input
+            id="targetDiastolic"
+            type="number"
+            [(ngModel)]="targetDiastolicInput"
+            name="targetDiastolic"
+            step="1"
+            min="30"
+            max="150"
+            placeholder="e.g. 80"
+          />
+        </div>
+      </div>
 
-    <!-- Goal Weight -->
-    <div class="form-group">
-      <label for="goal">Goal Weight in kg (optional)</label>
-      <input
-        id="goal"
-        type="number"
-        [(ngModel)]="goalWeightInput"
-        name="goal"
-        step="0.1"
-        min="1"
-        max="500"
-        placeholder="e.g. 70"
-      />
-    </div>
+      <!-- Note -->
+      <div class="form-group">
+        <label for="bpNote">Note (optional)</label>
+        <textarea
+          id="bpNote"
+          [(ngModel)]="bpNoteInput"
+          name="bpNote"
+          placeholder="Morning reading, after exercise…"
+          rows="2"
+        ></textarea>
+      </div>
 
-    <!-- Note -->
-    <div class="form-group">
-      <label for="note">Note (optional)</label>
-      <textarea
-        id="note"
-        [(ngModel)]="noteInput"
-        name="note"
-        placeholder="How are you feeling today?"
-        rows="2"
-      ></textarea>
-    </div>
-
-    <button type="submit" class="btn btn-primary btn-full submit-btn">
-      <span class="material-icons">save</span>
-      Save Entry
-    </button>
-  </form>
+      <button type="submit" class="btn btn-primary btn-full submit-btn">
+        <span class="material-icons">save</span>
+        Save Reading
+      </button>
+    </form>
+  }
 </div>
