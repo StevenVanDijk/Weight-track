@@ -2,9 +2,13 @@
   <div class="page-header">
     <div>
       <h2>History</h2>
-      <p class="subtitle">{{ entries().length }} entries recorded</p>
+      @if (tab() === 'weight') {
+        <p class="subtitle">{{ entries().length }} entries recorded</p>
+      } @else {
+        <p class="subtitle">{{ bpEntries().length }} readings recorded</p>
+      }
     </div>
-    @if (entries().length > 0) {
+    @if (tab() === 'weight' && entries().length > 0) {
       <button class="btn btn-ghost export-btn" (click)="exportData()">
         <span class="material-icons">download</span>
         Export
@@ -12,53 +16,121 @@
     }
   </div>
 
-  @if (entries().length === 0) {
-    <div class="empty-state card">
-      <span class="material-icons empty-icon">history</span>
-      <p>No weight entries yet.</p>
-      <p class="text-muted">Start logging your weight to see history here.</p>
-    </div>
-  } @else {
-    <div class="entries-list">
-      @for (entry of entries(); track entry.id; let i = $index) {
-        <div class="entry-card card">
-          <div class="entry-date-col">
-            <div class="entry-day">{{ entry.date | date:'d' }}</div>
-            <div class="entry-month">{{ entry.date | date:'MMM' }}</div>
-            <div class="entry-year">{{ entry.date | date:'yy' }}</div>
-          </div>
+  <!-- History tabs -->
+  <div class="history-tabs">
+    <button class="history-tab" [class.active]="tab() === 'weight'" (click)="setTab('weight')">
+      <span class="material-icons">monitor_weight</span>
+      Weight
+    </button>
+    <button class="history-tab" [class.active]="tab() === 'bp'" (click)="setTab('bp')">
+      <span class="material-icons">favorite</span>
+      Blood Pressure
+    </button>
+  </div>
 
-          <div class="entry-main">
-            <div class="entry-weight-row">
-              <span class="entry-weight">{{ entry.weight | number:'1.1-1' }}</span>
-              <span class="entry-unit">kg</span>
-              @if (getDelta(entry, i) !== null) {
-                <span class="entry-delta"
-                  [class.positive]="getDelta(entry, i)! > 0"
-                  [class.negative]="getDelta(entry, i)! < 0">
-                  {{ getDelta(entry, i)! > 0 ? '+' : '' }}{{ getDelta(entry, i) | number:'1.1-1' }}
-                </span>
+  <!-- ── Weight entries ── -->
+  @if (tab() === 'weight') {
+    @if (entries().length === 0) {
+      <div class="empty-state card">
+        <span class="material-icons empty-icon">history</span>
+        <p>No weight entries yet.</p>
+        <p class="text-muted">Start logging your weight to see history here.</p>
+      </div>
+    } @else {
+      <div class="entries-list">
+        @for (entry of entries(); track entry.id; let i = $index) {
+          <div class="entry-card card">
+            <div class="entry-date-col">
+              <div class="entry-day">{{ entry.date | date:'d' }}</div>
+              <div class="entry-month">{{ entry.date | date:'MMM' }}</div>
+              <div class="entry-year">{{ entry.date | date:'yy' }}</div>
+            </div>
+
+            <div class="entry-main">
+              <div class="entry-weight-row">
+                <span class="entry-weight">{{ entry.weight | number:'1.1-1' }}</span>
+                <span class="entry-unit">kg</span>
+                @if (getDelta(entry, i) !== null) {
+                  <span class="entry-delta"
+                    [class.positive]="getDelta(entry, i)! > 0"
+                    [class.negative]="getDelta(entry, i)! < 0">
+                    {{ getDelta(entry, i)! > 0 ? '+' : '' }}{{ getDelta(entry, i) | number:'1.1-1' }}
+                  </span>
+                }
+              </div>
+              @if (entry.note) {
+                <div class="entry-note">{{ entry.note }}</div>
               }
             </div>
-            @if (entry.note) {
-              <div class="entry-note">{{ entry.note }}</div>
-            }
-          </div>
 
-          <div class="entry-actions">
-            @if (deleteConfirm() === entry.id) {
-              <div class="confirm-delete">
-                <button class="btn btn-danger btn-sm" (click)="doDelete(entry.id)">Delete</button>
-                <button class="btn btn-ghost btn-sm" (click)="cancelDelete()">Cancel</button>
-              </div>
-            } @else {
-              <button class="delete-btn" (click)="confirmDelete(entry.id)" aria-label="Delete entry">
-                <span class="material-icons">delete_outline</span>
-              </button>
-            }
+            <div class="entry-actions">
+              @if (deleteConfirm() === entry.id) {
+                <div class="confirm-delete">
+                  <button class="btn btn-danger btn-sm" (click)="doDelete(entry.id)">Delete</button>
+                  <button class="btn btn-ghost btn-sm" (click)="cancelDelete()">Cancel</button>
+                </div>
+              } @else {
+                <button class="delete-btn" (click)="confirmDelete(entry.id)" aria-label="Delete entry">
+                  <span class="material-icons">delete_outline</span>
+                </button>
+              }
+            </div>
           </div>
-        </div>
-      }
-    </div>
+        }
+      </div>
+    }
+  }
+
+  <!-- ── Blood pressure readings ── -->
+  @if (tab() === 'bp') {
+    @if (bpEntries().length === 0) {
+      <div class="empty-state card">
+        <span class="material-icons empty-icon">favorite_border</span>
+        <p>No blood pressure readings yet.</p>
+        <p class="text-muted">Switch to the Log tab and select Blood Pressure to get started.</p>
+      </div>
+    } @else {
+      <div class="entries-list">
+        @for (entry of bpEntries(); track entry.id; let i = $index) {
+          <div class="entry-card card">
+            <div class="entry-date-col">
+              <div class="entry-day">{{ entry.date | date:'d' }}</div>
+              <div class="entry-month">{{ entry.date | date:'MMM' }}</div>
+              <div class="entry-year">{{ entry.date | date:'yy' }}</div>
+            </div>
+
+            <div class="entry-main">
+              <div class="entry-weight-row">
+                <span class="entry-weight bp-reading-text">{{ entry.systolic }}/{{ entry.diastolic }}</span>
+                <span class="entry-unit">mmHg</span>
+                @if (getSystolicDelta(entry, i) !== null) {
+                  <span class="entry-delta"
+                    [class.positive]="getSystolicDelta(entry, i)! > 0"
+                    [class.negative]="getSystolicDelta(entry, i)! < 0">
+                    {{ getSystolicDelta(entry, i)! > 0 ? '+' : '' }}{{ getSystolicDelta(entry, i) }}
+                  </span>
+                }
+              </div>
+              @if (entry.note) {
+                <div class="entry-note">{{ entry.note }}</div>
+              }
+            </div>
+
+            <div class="entry-actions">
+              @if (bpDeleteConfirm() === entry.id) {
+                <div class="confirm-delete">
+                  <button class="btn btn-danger btn-sm" (click)="doBpDelete(entry.id)">Delete</button>
+                  <button class="btn btn-ghost btn-sm" (click)="cancelBpDelete()">Cancel</button>
+                </div>
+              } @else {
+                <button class="delete-btn" (click)="confirmBpDelete(entry.id)" aria-label="Delete reading">
+                  <span class="material-icons">delete_outline</span>
+                </button>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
   }
 </div>

@@ -1,5 +1,6 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
 import { WeightEntry } from '../models/weight-entry';
+import { BloodPressureEntry } from '../models/blood-pressure-entry';
 import { DbService } from '../db';
 
 export type GoogleFitStatus = 'idle' | 'connecting' | 'syncing' | 'success' | 'error';
@@ -8,8 +9,8 @@ const SETTINGS_KEY = 'weight_google_fit';
 const FITNESS_API = 'https://www.googleapis.com/fitness/v1/users/me';
 // Merged weight data source provided by Google Fit (read-only, all apps contribute)
 const MERGED_SOURCE = 'derived:com.google.weight:com.google.android.gms:merge_weight';
-// Required OAuth scopes for reading and writing body data
-const SCOPES = 'https://www.googleapis.com/auth/fitness.body.read https://www.googleapis.com/auth/fitness.body.write';
+// Required OAuth scopes for reading and writing body and blood pressure data
+const SCOPES = 'https://www.googleapis.com/auth/fitness.body.read https://www.googleapis.com/auth/fitness.body.write https://www.googleapis.com/auth/fitness.blood_pressure.read https://www.googleapis.com/auth/fitness.blood_pressure.write';
 const MAX_LOG_ENTRIES = 1000;
 
 export interface GoogleFitSettings {
@@ -24,6 +25,8 @@ export interface GoogleFitSettings {
   lastSyncDate: string | null;
   /** IDs of WeightEntry records already written to Google Fit — prevents duplicate writes. */
   syncedEntryIds: string[];
+  /** IDs of BloodPressureEntry records already written to Google Fit — prevents duplicate writes. */
+  syncedBpEntryIds: string[];
   /** Persisted OAuth access token. Null when disconnected or cleared by disconnect(). */
   accessToken: string | null;
   /** Unix timestamp in ms after which accessToken is considered expired. */
@@ -619,6 +622,71 @@ export class GoogleFitService {
   }
 
   /**
+   * Syncs a single blood pressure entry to Google Fit if connected and not already synced.
+   * Designed for fire-and-forget use immediately after logging a new BP reading.
+   * Silently no-ops when disconnected or when the entry has already been pushed.
+   */
+  async syncBpEntry(entry: BloodPressureEntry): Promise<void> {
+    this.log('info', 'bp-auto-sync', `syncBpEntry() — entry ${entry.id} (${entry.date}, ${entry.systolic}/${entry.diastolic} mmHg)`);
+    const token = this._accessToken();
+    if (!token) {
+      this.log('info', 'bp-auto-sync', 'Skipped — not connected');
+      return;
+    }
+
+    const settings = this._settings();
+    if (settings.syncedBpEntryIds.includes(entry.id)) {
+      this.log('info', 'bp-auto-sync', `Skipped — entry ${entry.id} already synced`);
+      return;
+    }
+
+    try {
+      const dataSourceId = await this.ensureBpDataSource(token);
+      this.log('info', 'bp-auto-sync', `Using BP data source: ${dataSourceId}`);
+      const ms = new Date(entry.date).getTime();
+      const ns = String(ms * 1_000_000);
+
+      const patchUrl = `${FITNESS_API}/dataSources/${encodeURIComponent(dataSourceId)}/datasets/${ns}-${ns}`;
+      this.log('info', 'bp-auto-sync', `PATCH ${patchUrl}`);
+      const patchRes = await fetch(patchUrl, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          dataSourceId,
+          minStartTimeNs: ns,
+          maxEndTimeNs: ns,
+          point: [{
+            dataTypeName: 'com.google.blood_pressure',
+            startTimeNanos: ns,
+            endTimeNanos: ns,
+            value: [
+              { fpVal: entry.systolic },
+              { fpVal: entry.diastolic },
+              { intVal: 0 }, // body_position: unknown
+              { intVal: 0 }, // measurement_location: unknown
+            ],
+          }],
+        }),
+      });
+
+      if (!patchRes.ok) {
+        this.log('warn', 'bp-auto-sync', `PATCH failed — status ${patchRes.status} — entry will not be marked as synced`);
+        return;
+      }
+
+      this.log('info', 'bp-auto-sync', `PATCH response: ${patchRes.status} — BP entry ${entry.id} synced successfully`);
+      const updatedIds = [...this._settings().syncedBpEntryIds, entry.id];
+      this._settings.set({ ...this._settings(), syncedBpEntryIds: updatedIds });
+      this.saveSettings();
+    } catch (err: unknown) {
+      this.log('error', 'bp-auto-sync', `BP auto-sync error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
    * Push all local weight entries to Google Fit.
    * Creates a custom data source on first run, then patches the dataset.
    * Returns the number of entries exported.
@@ -723,6 +791,7 @@ export class GoogleFitService {
         clientSecret: s.clientSecret ?? '',
         lastSyncDate: s.lastSyncDate ?? null,
         syncedEntryIds: Array.isArray(s.syncedEntryIds) ? s.syncedEntryIds : [],
+        syncedBpEntryIds: Array.isArray((s as any).syncedBpEntryIds) ? (s as any).syncedBpEntryIds : [],
         accessToken: s.accessToken ?? null,
         tokenExpiry: s.tokenExpiry ?? null,
         refreshToken: (s as any).refreshToken ?? null,
@@ -1442,6 +1511,50 @@ export class GoogleFitService {
     return created.dataStreamId as string;
   }
 
+  private async ensureBpDataSource(token: string): Promise<string> {
+    const listUrl = `${FITNESS_API}/dataSources?dataTypeName=com.google.blood_pressure`;
+    this.log('info', 'bp-datasource', `Listing BP data sources — GET ${listUrl}`);
+    const listRes = await fetch(listUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    this.log(listRes.ok ? 'info' : 'error', 'bp-datasource', `List response: ${listRes.status} ${listRes.statusText}`);
+    if (!listRes.ok) throw new Error(`Failed to list BP data sources: ${listRes.status}`);
+
+    const listData = await listRes.json();
+    const sources: any[] = listData.dataSource ?? [];
+    const existing = sources.find(
+      s => s.dataStreamName === 'weight-track-bp' && s.dataType?.name === 'com.google.blood_pressure'
+    );
+    if (existing) {
+      this.log('info', 'bp-datasource', `Reusing existing BP source: ${existing.dataStreamId}`);
+      return existing.dataStreamId as string;
+    }
+
+    this.log('info', 'bp-datasource', 'No weight-track-bp source found — creating new BP data source');
+    const createRes = await fetch(`${FITNESS_API}/dataSources`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        dataStreamName: 'weight-track-bp',
+        type: 'raw',
+        application: { name: 'WeightTrack', version: '1' },
+        dataType: { name: 'com.google.blood_pressure' },
+      }),
+    });
+    this.log(createRes.ok ? 'info' : 'error', 'bp-datasource', `Create response: ${createRes.status} ${createRes.statusText}`);
+    if (!createRes.ok) {
+      const body = await createRes.text();
+      this.log('error', 'bp-datasource', `Create BP data source error body`, body.substring(0, 500));
+      throw new Error(`Failed to create BP data source: ${createRes.status}: ${body}`);
+    }
+    const created = await createRes.json();
+    this.log('info', 'bp-datasource', `BP data source created: ${created.dataStreamId}`);
+    return created.dataStreamId as string;
+  }
+
   /**
    * Logs a structured snapshot of the current browser/device environment.
    * Called at the start of connect() to provide baseline diagnostic context.
@@ -1499,12 +1612,13 @@ export class GoogleFitService {
         clientSecret: parsed.clientSecret ?? '',
         lastSyncDate: parsed.lastSyncDate ?? null,
         syncedEntryIds: Array.isArray(parsed.syncedEntryIds) ? parsed.syncedEntryIds : [],
+        syncedBpEntryIds: Array.isArray(parsed.syncedBpEntryIds) ? parsed.syncedBpEntryIds : [],
         accessToken: parsed.accessToken ?? null,
         tokenExpiry: parsed.tokenExpiry ?? null,
         refreshToken: parsed.refreshToken ?? null,
       };
     } catch {
-      return { clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [], accessToken: null, tokenExpiry: null, refreshToken: null };
+      return { clientId: '', clientSecret: '', lastSyncDate: null, syncedEntryIds: [], syncedBpEntryIds: [], accessToken: null, tokenExpiry: null, refreshToken: null };
     }
   }
 

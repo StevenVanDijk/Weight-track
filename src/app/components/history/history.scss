@@ -36,6 +36,50 @@
   .material-icons { font-size: 16px; }
 }
 
+// History tabs
+.history-tabs {
+  display: flex;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+}
+
+.history-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  border: none;
+  border-radius: calc(var(--radius) - 4px);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  .material-icons { font-size: 18px; }
+
+  &.active {
+    background: var(--primary);
+    color: white;
+  }
+
+  &:hover:not(.active) {
+    background: var(--bg-card-hover);
+    color: var(--text);
+  }
+}
+
+.bp-reading-text {
+  color: #f472b6;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;

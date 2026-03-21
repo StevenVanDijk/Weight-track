@@ -373,3 +373,55 @@
 - **US-146** As a user, when height is not set I see a hint linking to the Add Entry screen so that I know how to enable BMI tracking.
 - **US-147** As a user, toggling BMI off reverts the chart to showing only the weight line so that I can focus on weight trends without distraction.
 - **US-148** As a user, my Show/Hide BMI preference is persisted across sessions so that I don't have to re-enable it each visit.
+
+---
+
+## 14. Blood Pressure Tracking
+
+### 14.1 Logging
+
+- **US-213** As a user, I can switch the Log page between "Weight" and "Blood Pressure" mode using a tab toggle so that I can log either measurement from the same screen.
+- **US-214** As a user, when logging blood pressure I enter a systolic value (upper number) and a diastolic value (lower number) in mmHg so that both components of my reading are captured.
+- **US-215** As a user, the app validates that systolic is between 60 and 250 mmHg and diastolic is between 30 and 150 mmHg so that implausible readings are rejected.
+- **US-216** As a user, the app validates that diastolic is less than systolic so that logically inconsistent readings are rejected.
+- **US-217** As a user, I can attach an optional note to a blood pressure reading (e.g. "morning reading") so that I have context for the measurement.
+- **US-218** As a user, I can set optional target systolic and diastolic values on the Log BP form so that I can track progress toward my blood pressure goal.
+- **US-219** As a user, my target blood pressure values are persisted across sessions so that I do not need to re-enter them each time.
+- **US-220** As a user, after saving a blood pressure reading I am redirected to the dashboard so that I can immediately see the updated stats.
+- **US-221** As a user, logging a blood pressure reading on a date that already has a reading replaces the previous one so that each day has exactly one canonical reading.
+
+### 14.2 Dashboard
+
+- **US-222** As a user, I see a Blood Pressure card on the dashboard showing my latest systolic/diastolic reading in "sys/dia mmHg" format so that I can see my most recent measurement at a glance.
+- **US-223** As a user, the Blood Pressure card on the dashboard shows average systolic and diastolic values so that I can see my overall trend alongside the latest reading.
+- **US-224** As a user, when no blood pressure readings exist the Blood Pressure card shows an empty state with a prompt to log my first reading so that I know how to get started.
+
+### 14.3 History
+
+- **US-225** As a user, the History page has a "Weight" / "Blood Pressure" tab toggle so that I can view either type of history without navigating to a separate page.
+- **US-226** As a user, the blood pressure history list shows each reading as "sys/dia mmHg" with the date and optional note so that I can review my readings over time.
+- **US-227** As a user, each blood pressure history entry shows the change in systolic pressure compared to the previous reading so that trends are immediately visible.
+- **US-228** As a user, I can delete a blood pressure reading via a confirmation step so that accidental taps do not remove data.
+
+### 14.4 Chart
+
+- **US-229** As a user, the Chart page has a "Weight" / "Blood Pressure" mode toggle so that I can view either type of chart without navigating to a separate page.
+- **US-230** As a user, the blood pressure chart draws two smooth lines — systolic (indigo/blue) and diastolic (pink) — on a single mmHg Y-axis so that both values are visible on the same scale.
+- **US-231** As a user, data points are shown on both the systolic and diastolic lines so that individual readings are identifiable.
+- **US-232** As a user, if I have set target systolic or diastolic values they appear as dashed horizontal lines on the BP chart so that I can see how my readings compare to my targets.
+- **US-233** As a user, the BP chart respects the same period selector (7D / 30D / 90D / All) as the weight chart so that I can filter the time range.
+- **US-234** As a user, the BP chart shows a summary row below the chart with the latest systolic, latest diastolic, and average reading so that key stats are visible without scrolling.
+- **US-235** As a user, when fewer than 2 blood pressure readings exist for the selected period the chart shows an informative "not enough data" message so that the canvas does not render an empty or broken chart.
+
+### 14.5 Persistence
+
+- **US-236** As a user, blood pressure entries are dual-written to localStorage and IndexedDB so that my data is preserved even if localStorage is evicted by the browser.
+- **US-237** As a user, if localStorage is cleared, blood pressure entries are restored from IndexedDB on the next app launch so that my data is not permanently lost.
+- **US-238** As a user, blood pressure target settings are persisted the same way as entries so that preferences survive browser storage eviction.
+
+### 14.6 Google Fit Sync
+
+- **US-239** As a user, when I log a blood pressure reading and Google Fit is connected, the reading is automatically synced to Google Fit in the background using the `com.google.blood_pressure` data type so that my health data stays up to date.
+- **US-240** As a user, each blood pressure reading is synced to Google Fit at most once — subsequent calls for the same entry ID are skipped — so that duplicate data points are not created.
+- **US-241** As a user, if the background BP sync to Google Fit fails the failure is silent and does not interrupt my logging flow.
+- **US-242** As a user, when connecting to Google Fit the app requests both body and blood pressure OAuth scopes so that both weight and blood pressure data can be read and written.
