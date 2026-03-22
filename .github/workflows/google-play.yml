@@ -1,0 +1,157 @@
+name: Build & Publish to Google Play
+
+# Triggered manually (recommended) or automatically on version tags.
+#
+# REQUIRED GITHUB SECRETS — set these in Settings → Secrets and variables → Actions:
+#
+#   ANDROID_KEYSTORE_BASE64          Base64-encoded upload keystore file
+#                                    Generate: keytool -genkeypair -v -keystore weighttrack.jks \
+#                                      -alias weighttrack -keyalg RSA -keysize 2048 -validity 10000
+#                                    Encode:   base64 -w 0 weighttrack.jks
+#   ANDROID_KEY_ALIAS                Key alias used above (e.g. "weighttrack")
+#   ANDROID_KEY_PASSWORD             Key password chosen during keytool
+#   ANDROID_STORE_PASSWORD           Keystore password chosen during keytool
+#   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON Full JSON content of the Google Play service account key
+#                                    Create at: Play Console → Setup → API access → Service accounts
+#
+# REQUIRED GITHUB VARIABLES — set these in Settings → Secrets and variables → Variables:
+#
+#   TWA_HOST                         Your Vercel domain without protocol (e.g. weight-track.vercel.app)
+#
+# ONE-TIME SETUP (before first run):
+#   1. Replace YOUR_VERCEL_DOMAIN in twa-manifest.json with your real domain.
+#   2. Get your signing certificate SHA-256 fingerprint:
+#        keytool -list -v -keystore weighttrack.jks -alias weighttrack
+#      Paste the fingerprint into public/.well-known/assetlinks.json.
+#   3. Deploy the updated assetlinks.json to production (push to main).
+#   4. Verify it's reachable: https://YOUR_DOMAIN/.well-known/assetlinks.json
+#   5. Create the app in Google Play Console (you need at least one manual upload first).
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: 'Play Store release track'
+        required: true
+        default: 'internal'
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+      version_name:
+        description: 'Version name override (e.g. 1.2.0). Leave blank to auto-generate.'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  build-and-publish:
+    name: Build TWA & Publish to Play Store
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Angular app
+        run: npm run build
+
+      - name: Install Bubblewrap CLI
+        run: npm install -g @bubblewrap/cli@latest
+
+      - name: Resolve version name and code
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION_NAME="${{ github.ref_name }}"
+            VERSION_NAME="${VERSION_NAME#v}"
+          elif [[ -n "${{ inputs.version_name }}" ]]; then
+            VERSION_NAME="${{ inputs.version_name }}"
+          else
+            VERSION_NAME="1.0.${{ github.run_number }}"
+          fi
+          # Version code must be a positive integer that increases with each release.
+          # Using run_number keeps it simple and monotonically increasing.
+          VERSION_CODE="${{ github.run_number }}"
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android.keystore
+
+      - name: Patch twa-manifest.json with host and version
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          const manifest = JSON.parse(fs.readFileSync('twa-manifest.json', 'utf8'));
+          const host = process.env.TWA_HOST;
+          if (host) {
+            manifest.host = host;
+            manifest.iconUrl = `https://${host}/icons/icon-512x512.png`;
+            manifest.maskableIconUrl = `https://${host}/icons/icon-512x512.png`;
+            manifest.monochromeIconUrl = `https://${host}/icons/icon-512x512.png`;
+            manifest.fullScopeUrl = `https://${host}/`;
+            manifest.webManifestUrl = `https://${host}/manifest.webmanifest`;
+          }
+          manifest.appVersion    = process.env.VERSION_CODE;
+          manifest.appVersionName = process.env.VERSION_NAME;
+          manifest.signingKey.alias = process.env.KEY_ALIAS;
+          fs.writeFileSync('twa-manifest.json', JSON.stringify(manifest, null, 2));
+          EOF
+        env:
+          TWA_HOST: ${{ vars.TWA_HOST }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+
+      - name: Generate Android project from twa-manifest.json
+        run: bubblewrap update --skipPwaValidation
+        env:
+          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Build release AAB
+        run: bubblewrap build --skipPwaValidation
+        env:
+          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Upload AAB to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.weighttrack.pwa
+          releaseFiles: app/build/outputs/bundle/release/app-release.aab
+          track: ${{ inputs.track || 'internal' }}
+          status: completed
+
+      - name: Upload AAB as build artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: app-release-${{ steps.version.outputs.name }}-(${{ steps.version.outputs.code }})
+          path: app/build/outputs/bundle/release/app-release.aab
+          retention-days: 30

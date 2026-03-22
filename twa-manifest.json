@@ -1,0 +1,40 @@
+{
+  "packageId": "com.weighttrack.pwa",
+  "host": "YOUR_VERCEL_DOMAIN",
+  "name": "WeightTrack - Personal Weight Tracker",
+  "launcherName": "WeightTrack",
+  "display": "standalone",
+  "orientation": "portrait",
+  "themeColor": "#1e293b",
+  "navigationColor": "#1e293b",
+  "navigationColorDark": "#0f172a",
+  "navigationDividerColor": "#334155",
+  "navigationDividerColorDark": "#334155",
+  "backgroundColor": "#0f172a",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://YOUR_VERCEL_DOMAIN/icons/icon-512x512.png",
+  "maskableIconUrl": "https://YOUR_VERCEL_DOMAIN/icons/icon-512x512.png",
+  "monochromeIconUrl": "https://YOUR_VERCEL_DOMAIN/icons/icon-512x512.png",
+  "appVersion": "1",
+  "appVersionName": "1.0.0",
+  "shortcuts": [],
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "weighttrack"
+  },
+  "splashScreenFadeOutDuration": 300,
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://YOUR_VERCEL_DOMAIN/",
+  "minSdkVersion": 19,
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://YOUR_VERCEL_DOMAIN/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "serviceAccountJsonFile": ""
+}
