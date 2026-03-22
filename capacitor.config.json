@@ -1,0 +1,8 @@
+{
+  "appId": "com.weighttrack.pwa",
+  "appName": "WeightTrack",
+  "webDir": "dist/weight-track/browser",
+  "android": {
+    "backgroundColor": "#0f172a"
+  }
+}

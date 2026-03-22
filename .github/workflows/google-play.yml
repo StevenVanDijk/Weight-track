@@ -1,0 +1,157 @@
+name: Build & Publish to Google Play
+
+# Builds the Angular app, bundles it into a self-contained Android AAB via
+# Capacitor (no hosting required — all web assets are packaged inside the APK),
+# signs it, and uploads to Google Play Console.
+#
+# ── REQUIRED GITHUB SECRETS ──────────────────────────────────────────────────
+# Set these in: Settings → Secrets and variables → Actions → New repository secret
+#
+#   ANDROID_KEYSTORE_BASE64          Base64-encoded upload keystore
+#                                    Generate keystore:
+#                                      keytool -genkeypair -v \
+#                                        -keystore weighttrack.jks \
+#                                        -alias weighttrack \
+#                                        -keyalg RSA -keysize 2048 -validity 10000
+#                                    Encode for the secret:
+#                                      base64 -w 0 weighttrack.jks
+#
+#   ANDROID_KEY_ALIAS                Alias chosen above (e.g. "weighttrack")
+#   ANDROID_KEY_PASSWORD             Key password chosen during keytool
+#   ANDROID_STORE_PASSWORD           Keystore/store password chosen during keytool
+#
+#   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON Full JSON content of the Google Play service
+#                                    account key. Steps to create it:
+#                                    1. Play Console → Setup → API access
+#                                    2. Link to a Google Cloud project
+#                                    3. Create a service account, grant it
+#                                       "Release manager" role in Play Console
+#                                    4. Create and download a JSON key
+#
+# ── ONE-TIME MANUAL UPLOAD ───────────────────────────────────────────────────
+# Google Play requires the very first AAB to be uploaded manually through the
+# Play Console web UI before the API (and this workflow) can take over.
+# After that first upload, all subsequent releases can be automated here.
+#
+# ── TRIGGERING A RELEASE ─────────────────────────────────────────────────────
+#   Automatic: push a tag matching v*.*.* (e.g. git tag v1.0.0 && git push --tags)
+#   Manual:    Actions → "Build & Publish to Google Play" → Run workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: 'Play Store release track'
+        required: true
+        default: 'internal'
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+      version_name:
+        description: 'Version name override (e.g. 1.2.0). Leave blank to auto-generate.'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  build-and-publish:
+    name: Build & Publish to Play Store
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Angular app
+        run: npm run build
+
+      - name: Resolve version name and code
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION_NAME="${{ github.ref_name }}"
+            VERSION_NAME="${VERSION_NAME#v}"
+          elif [[ -n "${{ inputs.version_name }}" ]]; then
+            VERSION_NAME="${{ inputs.version_name }}"
+          else
+            VERSION_NAME="1.0.${{ github.run_number }}"
+          fi
+          # Version code must be a strictly increasing integer.
+          # Using run_number keeps it simple and monotonically increasing.
+          VERSION_CODE="${{ github.run_number }}"
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Android project via Capacitor
+        run: npx cap add android
+
+      - name: Sync web assets into Android project
+        run: npx cap sync android
+
+      - name: Set version code and name in build.gradle
+        run: |
+          sed -i \
+            "s/versionCode [0-9]*/versionCode ${{ steps.version.outputs.code }}/" \
+            android/app/build.gradle
+          sed -i \
+            "s/versionName \"[^\"]*\"/versionName \"${{ steps.version.outputs.name }}\"/" \
+            android/app/build.gradle
+
+      - name: Build release AAB (unsigned)
+        run: |
+          chmod +x android/gradlew
+          cd android && ./gradlew bundleRelease
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android.keystore
+
+      - name: Sign AAB
+        uses: r0adkll/sign-android-release@v1
+        id: sign
+        with:
+          releaseDirectory: android/app/build/outputs/bundle/release
+          signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Upload AAB to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.weighttrack.pwa
+          releaseFiles: ${{ steps.sign.outputs.signedReleaseFile }}
+          track: ${{ inputs.track || 'internal' }}
+          status: completed
+
+      - name: Save signed AAB as build artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: weighttrack-${{ steps.version.outputs.name }}-(${{ steps.version.outputs.code }})
+          path: ${{ steps.sign.outputs.signedReleaseFile }}
+          retention-days: 30

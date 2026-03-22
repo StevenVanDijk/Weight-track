@@ -83,3 +83,18 @@ Push to `main` → GitHub Actions (`.github/workflows/deploy.yml`) → Vercel pr
 Pull requests get a Vercel preview URL auto-commented on the PR.
 
 Required GitHub secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
+
+## Google Play Release Rule
+
+**After every successful change that is committed and pushed, you MUST create and push a new version tag to trigger a Google Play release.**
+
+Steps:
+1. Determine the next version by inspecting the latest git tag (`git tag --sort=-v:refname | head -1`). If no tag exists, start at `v1.0.0`.
+2. Increment the patch number (e.g. `v1.0.3` → `v1.0.4`).
+3. Create and push the tag:
+   ```bash
+   git tag v<next>
+   git push origin v<next>
+   ```
+
+This triggers `.github/workflows/google-play.yml`, which builds, signs, and publishes the AAB to the Play Store internal track automatically.
