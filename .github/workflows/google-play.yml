@@ -1,31 +1,41 @@
 name: Build & Publish to Google Play
 
-# Triggered manually (recommended) or automatically on version tags.
+# Builds the Angular app, bundles it into a self-contained Android AAB via
+# Capacitor (no hosting required — all web assets are packaged inside the APK),
+# signs it, and uploads to Google Play Console.
 #
-# REQUIRED GITHUB SECRETS — set these in Settings → Secrets and variables → Actions:
+# ── REQUIRED GITHUB SECRETS ──────────────────────────────────────────────────
+# Set these in: Settings → Secrets and variables → Actions → New repository secret
 #
-#   ANDROID_KEYSTORE_BASE64          Base64-encoded upload keystore file
-#                                    Generate: keytool -genkeypair -v -keystore weighttrack.jks \
-#                                      -alias weighttrack -keyalg RSA -keysize 2048 -validity 10000
-#                                    Encode:   base64 -w 0 weighttrack.jks
-#   ANDROID_KEY_ALIAS                Key alias used above (e.g. "weighttrack")
+#   ANDROID_KEYSTORE_BASE64          Base64-encoded upload keystore
+#                                    Generate keystore:
+#                                      keytool -genkeypair -v \
+#                                        -keystore weighttrack.jks \
+#                                        -alias weighttrack \
+#                                        -keyalg RSA -keysize 2048 -validity 10000
+#                                    Encode for the secret:
+#                                      base64 -w 0 weighttrack.jks
+#
+#   ANDROID_KEY_ALIAS                Alias chosen above (e.g. "weighttrack")
 #   ANDROID_KEY_PASSWORD             Key password chosen during keytool
-#   ANDROID_STORE_PASSWORD           Keystore password chosen during keytool
-#   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON Full JSON content of the Google Play service account key
-#                                    Create at: Play Console → Setup → API access → Service accounts
+#   ANDROID_STORE_PASSWORD           Keystore/store password chosen during keytool
 #
-# REQUIRED GITHUB VARIABLES — set these in Settings → Secrets and variables → Variables:
+#   GOOGLE_PLAY_SERVICE_ACCOUNT_JSON Full JSON content of the Google Play service
+#                                    account key. Steps to create it:
+#                                    1. Play Console → Setup → API access
+#                                    2. Link to a Google Cloud project
+#                                    3. Create a service account, grant it
+#                                       "Release manager" role in Play Console
+#                                    4. Create and download a JSON key
 #
-#   TWA_HOST                         Your Vercel domain without protocol (e.g. weight-track.vercel.app)
+# ── ONE-TIME MANUAL UPLOAD ───────────────────────────────────────────────────
+# Google Play requires the very first AAB to be uploaded manually through the
+# Play Console web UI before the API (and this workflow) can take over.
+# After that first upload, all subsequent releases can be automated here.
 #
-# ONE-TIME SETUP (before first run):
-#   1. Replace YOUR_VERCEL_DOMAIN in twa-manifest.json with your real domain.
-#   2. Get your signing certificate SHA-256 fingerprint:
-#        keytool -list -v -keystore weighttrack.jks -alias weighttrack
-#      Paste the fingerprint into public/.well-known/assetlinks.json.
-#   3. Deploy the updated assetlinks.json to production (push to main).
-#   4. Verify it's reachable: https://YOUR_DOMAIN/.well-known/assetlinks.json
-#   5. Create the app in Google Play Console (you need at least one manual upload first).
+# ── TRIGGERING A RELEASE ─────────────────────────────────────────────────────
+#   Automatic: push a tag matching v*.*.* (e.g. git tag v1.0.0 && git push --tags)
+#   Manual:    Actions → "Build & Publish to Google Play" → Run workflow
 
 on:
   workflow_dispatch:
@@ -50,7 +60,7 @@ on:
 
 jobs:
   build-and-publish:
-    name: Build TWA & Publish to Play Store
+    name: Build & Publish to Play Store
     runs-on: ubuntu-latest
 
     steps:
@@ -78,9 +88,6 @@ jobs:
       - name: Build Angular app
         run: npm run build
 
-      - name: Install Bubblewrap CLI
-        run: npm install -g @bubblewrap/cli@latest
-
       - name: Resolve version name and code
         id: version
         run: |
@@ -92,66 +99,59 @@ jobs:
           else
             VERSION_NAME="1.0.${{ github.run_number }}"
           fi
-          # Version code must be a positive integer that increases with each release.
+          # Version code must be a strictly increasing integer.
           # Using run_number keeps it simple and monotonically increasing.
           VERSION_CODE="${{ github.run_number }}"
           echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
 
+      - name: Generate Android project via Capacitor
+        run: npx cap add android
+
+      - name: Sync web assets into Android project
+        run: npx cap sync android
+
+      - name: Set version code and name in build.gradle
+        run: |
+          sed -i \
+            "s/versionCode [0-9]*/versionCode ${{ steps.version.outputs.code }}/" \
+            android/app/build.gradle
+          sed -i \
+            "s/versionName \"[^\"]*\"/versionName \"${{ steps.version.outputs.name }}\"/" \
+            android/app/build.gradle
+
+      - name: Build release AAB (unsigned)
+        run: |
+          chmod +x android/gradlew
+          cd android && ./gradlew bundleRelease
+
       - name: Decode keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android.keystore
 
-      - name: Patch twa-manifest.json with host and version
-        run: |
-          node - <<'EOF'
-          const fs = require('fs');
-          const manifest = JSON.parse(fs.readFileSync('twa-manifest.json', 'utf8'));
-          const host = process.env.TWA_HOST;
-          if (host) {
-            manifest.host = host;
-            manifest.iconUrl = `https://${host}/icons/icon-512x512.png`;
-            manifest.maskableIconUrl = `https://${host}/icons/icon-512x512.png`;
-            manifest.monochromeIconUrl = `https://${host}/icons/icon-512x512.png`;
-            manifest.fullScopeUrl = `https://${host}/`;
-            manifest.webManifestUrl = `https://${host}/manifest.webmanifest`;
-          }
-          manifest.appVersion    = process.env.VERSION_CODE;
-          manifest.appVersionName = process.env.VERSION_NAME;
-          manifest.signingKey.alias = process.env.KEY_ALIAS;
-          fs.writeFileSync('twa-manifest.json', JSON.stringify(manifest, null, 2));
-          EOF
-        env:
-          TWA_HOST: ${{ vars.TWA_HOST }}
-          VERSION_CODE: ${{ steps.version.outputs.code }}
-          VERSION_NAME: ${{ steps.version.outputs.name }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-
-      - name: Generate Android project from twa-manifest.json
-        run: bubblewrap update --skipPwaValidation
-        env:
-          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-          BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-
-      - name: Build release AAB
-        run: bubblewrap build --skipPwaValidation
-        env:
-          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-          BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      - name: Sign AAB
+        uses: r0adkll/sign-android-release@v1
+        id: sign
+        with:
+          releaseDirectory: android/app/build/outputs/bundle/release
+          signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Upload AAB to Google Play
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.weighttrack.pwa
-          releaseFiles: app/build/outputs/bundle/release/app-release.aab
+          releaseFiles: ${{ steps.sign.outputs.signedReleaseFile }}
           track: ${{ inputs.track || 'internal' }}
           status: completed
 
-      - name: Upload AAB as build artifact
+      - name: Save signed AAB as build artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: app-release-${{ steps.version.outputs.name }}-(${{ steps.version.outputs.code }})
-          path: app/build/outputs/bundle/release/app-release.aab
+          name: weighttrack-${{ steps.version.outputs.name }}-(${{ steps.version.outputs.code }})
+          path: ${{ steps.sign.outputs.signedReleaseFile }}
           retention-days: 30

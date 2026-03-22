@@ -45,3 +45,8 @@ Thumbs.db
 
 # Auto-generated at build/start time — do not commit
 /src/build-info.ts
+
+# Android keystore — never commit secrets
+android.keystore
+*.jks
+*.keystore
