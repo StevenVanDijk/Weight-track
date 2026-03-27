@@ -35,6 +35,14 @@ describe('AddEntryComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  it('save button is rendered and visible in the DOM', async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const btn: HTMLButtonElement | null = fixture.nativeElement.querySelector('button[type="submit"].submit-btn');
+    expect(btn).toBeTruthy();
+    expect(btn!.offsetParent).not.toBeNull();
+  });
+
   it('shows kg badge label', () => {
     const el: HTMLElement = fixture.nativeElement;
     expect(el.textContent).toContain('kg');
