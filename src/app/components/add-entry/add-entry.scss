@@ -227,12 +227,16 @@
 }
 
 .submit-btn {
+  position: sticky;
+  bottom: calc(var(--nav-height) + 8px);
+  z-index: 10;
   margin-top: 8px;
   padding: 16px;
   font-size: 1rem;
   border-radius: var(--radius);
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   transition: opacity 0.2s, transform 0.15s;
+  box-shadow: 0 4px 16px rgba(79, 70, 229, 0.4);
 
   &:hover { opacity: 0.9; }
   &:active { transform: scale(0.98); }
