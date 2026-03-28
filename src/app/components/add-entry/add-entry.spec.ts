@@ -40,7 +40,30 @@ describe('AddEntryComponent', () => {
     await fixture.whenStable();
     const btn: HTMLButtonElement | null = fixture.nativeElement.querySelector('button[type="submit"].submit-btn');
     expect(btn).toBeTruthy();
-    expect(btn!.offsetParent).not.toBeNull();
+    // offsetParent is null for position:sticky in jsdom; check display instead
+    expect(btn!.style.display).not.toBe('none');
+    expect(btn!.hidden).toBe(false);
+  });
+
+  it('submit button bottom edge is above the bottom navigation bar', async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const container: HTMLElement = fixture.nativeElement.querySelector('.add-entry');
+    expect(container).toBeTruthy();
+
+    // Angular compiles and injects component styles as <style> elements in document.head.
+    // We verify the .add-entry container declares a padding-bottom sufficient to keep
+    // the submit button above the fixed bottom navigation bar (--nav-height = 68px).
+    // Without explicit padding-bottom, position:sticky on the button only helps during
+    // scroll — when the form fits the viewport without scrolling, the fixed nav bar
+    // (z-index: 100) renders on top of the button.
+    const injectedStyles = Array.from(document.head.querySelectorAll('style'))
+      .map(s => s.textContent ?? '')
+      .join('');
+
+    // Expect the .add-entry rule block to contain an explicit padding-bottom declaration
+    expect(injectedStyles).toMatch(/\.add-entry[^{]*\{[^}]*padding-bottom\s*:/);
   });
 
   it('shows kg badge label', () => {

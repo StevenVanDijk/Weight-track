@@ -1,5 +1,6 @@
 .add-entry {
   padding: 16px;
+  padding-bottom: calc(var(--nav-height) + 16px);
   max-width: 480px;
   margin: 0 auto;
   display: flex;
