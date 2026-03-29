@@ -1,6 +1,6 @@
 .add-entry {
   padding: 16px;
-  padding-bottom: calc(var(--nav-height) + 16px);
+  padding-bottom: calc(var(--nav-height) + 32px);
   max-width: 480px;
   margin: 0 auto;
   display: flex;
@@ -9,6 +9,16 @@
 }
 
 .page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+
+  .header-text {
+    flex: 1;
+    min-width: 0;
+  }
+
   h2 {
     font-size: 1.5rem;
     font-weight: 700;
@@ -22,6 +32,25 @@
     color: var(--text-muted);
     font-size: 0.85rem;
     margin-top: 4px;
+  }
+}
+
+.header-date {
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.82rem;
+  padding: 6px 10px;
+  color-scheme: dark;
+  cursor: pointer;
+  transition: border-color 0.2s;
+
+  &:focus {
+    outline: none;
+    border-color: var(--primary-light);
   }
 }
 
@@ -228,9 +257,6 @@
 }
 
 .submit-btn {
-  position: sticky;
-  bottom: calc(var(--nav-height) + 8px);
-  z-index: 10;
   margin-top: 8px;
   padding: 16px;
   font-size: 1rem;
