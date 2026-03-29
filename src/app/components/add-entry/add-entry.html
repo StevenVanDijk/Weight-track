@@ -1,7 +1,26 @@
 <div class="add-entry fade-in">
   <div class="page-header">
-    <h2>Log Entry</h2>
-    <p class="subtitle">Record today's measurement</p>
+    <div class="header-text">
+      <h2>Log Entry</h2>
+      <p class="subtitle">Record today's measurement</p>
+    </div>
+    @if (mode() === 'weight') {
+      <input
+        type="date"
+        [(ngModel)]="dateInput"
+        [max]="date()"
+        class="header-date"
+        aria-label="Entry date"
+      />
+    } @else {
+      <input
+        type="date"
+        [(ngModel)]="bpDateInput"
+        [max]="bpDate()"
+        class="header-date"
+        aria-label="Entry date"
+      />
+    }
   </div>
 
   <!-- Mode tabs -->
@@ -60,19 +79,6 @@
         @if (error()) {
           <span class="error-msg">{{ error() }}</span>
         }
-      </div>
-
-      <!-- Date -->
-      <div class="form-group">
-        <label for="date">Date</label>
-        <input
-          id="date"
-          type="date"
-          [(ngModel)]="dateInput"
-          name="date"
-          [max]="date()"
-          required
-        />
       </div>
 
       <!-- Height -->
@@ -174,19 +180,6 @@
       @if (bpError()) {
         <span class="error-msg">{{ bpError() }}</span>
       }
-
-      <!-- Date -->
-      <div class="form-group">
-        <label for="bpDate">Date</label>
-        <input
-          id="bpDate"
-          type="date"
-          [(ngModel)]="bpDateInput"
-          name="bpDate"
-          [max]="bpDate()"
-          required
-        />
-      </div>
 
       <!-- Target BP -->
       <div class="bp-target-group">

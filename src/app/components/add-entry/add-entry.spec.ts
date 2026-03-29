@@ -55,15 +55,20 @@ describe('AddEntryComponent', () => {
     // Angular compiles and injects component styles as <style> elements in document.head.
     // We verify the .add-entry container declares a padding-bottom sufficient to keep
     // the submit button above the fixed bottom navigation bar (--nav-height = 68px).
-    // Without explicit padding-bottom, position:sticky on the button only helps during
-    // scroll — when the form fits the viewport without scrolling, the fixed nav bar
-    // (z-index: 100) renders on top of the button.
     const injectedStyles = Array.from(document.head.querySelectorAll('style'))
       .map(s => s.textContent ?? '')
       .join('');
 
     // Expect the .add-entry rule block to contain an explicit padding-bottom declaration
     expect(injectedStyles).toMatch(/\.add-entry[^{]*\{[^}]*padding-bottom\s*:/);
+
+    // position:sticky on .submit-btn was the root cause of the button being obscured:
+    // inside a nested flex container it does not reliably activate when the form fills
+    // the viewport without overflow, leaving the fixed nav bar (z-index:100) covering
+    // the button. The previous test for padding-bottom passed even when sticky was
+    // present because it only checked that the CSS property was declared, not that the
+    // button was actually visible. The button must NOT use position:sticky.
+    expect(injectedStyles).not.toMatch(/\.submit-btn[^{]*\{[^}]*position\s*:\s*sticky/);
   });
 
   it('shows kg badge label', () => {
